@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= title %></title>
+    <link rel='stylesheet' href='/stylesheets/style.css' />
+    <style>
+      .port-table {
+          border: 1px solid black;
+      }
+      .port-table tr, .port-table th, .port-table td {
+          border: 1px solid black;
+          text-align: center;
+      }
+      .port-table th, .port-table td {
+        width: 60px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1><%= title %></h1>
+    <table>
+      <tbody>
+        <tr>
+          <th>Name</th>
+          <td><%= switchInfo.name %></td>
+        </tr>
+        <tr>
+          <th>Description</th>
+          <td><%= switchInfo.full %></td>
+        </tr>
+        <tr>
+          <th>Uptime</th>
+          <td><%= switchInfo.uptime %></td>
+        </tr>
+      </tbody>
+    </table>
+    <p></p>
+    <table class="port-table">
+      <tbody>
+        <% var portFirstHalf = switchPort.slice(0, switchPort.length / 2); %>
+
+        <tr>
+          <th>Port</th>
+          <% for (let portInfo of portFirstHalf) { %>
+          <td><%= portInfo.port %></td>
+          <% } %>
+        </tr>
+
+        <tr>
+          <th>Dorm</th>
+          <% for (let portInfo of portFirstHalf) { %>
+          <td><%= portInfo.dorm %></td>
+          <% } %>
+        </tr>
+
+        <tr>
+          <th>Room</th>
+          <% for (let portInfo of portFirstHalf) { %>
+          <td><%= portInfo.room %></td>
+          <% } %>
+        </tr>
+
+        <tr>
+          <th>Plug</th>
+          <% for (let portInfo of portFirstHalf) { %>
+          <td><%= portInfo.plug %></td>
+          <% } %>
+        </tr>
+
+        <tr>
+          <th>Special</th>
+          <% for (let portInfo of portFirstHalf) { %>
+          <td><%= portInfo.special %></td>
+          <% } %>
+        </tr>
+
+        <tr>
+          <td colspan="<%= portFirstHalf.length + 1 %>">--</td>
+        </tr>
+
+        <% const portLastHalf = switchPort.slice(switchPort.length / 2); %>
+
+        <tr>
+          <th>Port</th>
+          <% for (let portInfo of portLastHalf) { %>
+          <td><%= portInfo.port %></td>
+          <% } %>
+        </tr>
+
+        <tr>
+          <th>Dorm</th>
+          <% for (let portInfo of portLastHalf) { %>
+          <td><%= portInfo.dorm %></td>
+          <% } %>
+        </tr>
+
+        <tr>
+          <th>Room</th>
+          <% for (let portInfo of portLastHalf) { %>
+          <td><%= portInfo.room %></td>
+          <% } %>
+        </tr>
+
+        <tr>
+          <th>Plug</th>
+          <% for (let portInfo of portLastHalf) { %>
+          <td><%= portInfo.plug %></td>
+          <% } %>
+        </tr>
+
+        <tr>
+          <th>Special</th>
+          <% for (let portInfo of portLastHalf) { %>
+          <td><%= portInfo.special %></td>
+          <% } %>
+        </tr>
+
+      </tbody>
+    </table>
+  </body>
+</html>
