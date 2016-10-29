@@ -12,6 +12,7 @@
     "debug": "~2.2.0",
     "ejs": "~2.3.3",
     "express": "~4.13.1",
+    "ioredis": "^2.4.0",
     "less-middleware": "1.0.x",
     "morgan": "~1.6.1",
     "mysql": "^2.11.1",

@@ -7,7 +7,13 @@
     "database": "network",
     "tables": {
       "SwitchList": "switch_list",
-      "SwitchPort": "switch_dvo"
+      "SwitchPort": "switch_dvo",
+      "SwitchDvo": "switch_dvo",
+      "IpDvo": "ip_dvo"
     }
+  },
+  "DHCP": {
+    "lease": 14400,
+    "nameServers": ["8.8.8.8", "140.117.11.1"]
   }
 }
