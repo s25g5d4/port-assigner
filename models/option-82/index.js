@@ -1,6 +1,8 @@
+const vendor = require('./vendor');
+
 const switchTypeList = [];
-switchTypeList.push( require('./gs2200') );
-switchTypeList.push( require('./procurve') );
+
+vendor.forEach(e => switchType.push(`${__dirname}/${e}`) )
 
 module.exports.extractOption82 = function extractOption82(switchType, option82) {
   const matchedRule = switchTypeList.filter(e => e.match.test(switchType));
@@ -17,7 +19,21 @@ module.exports.extractOption82 = function extractOption82(switchType, option82) 
 
     const subOptions = {};
     rawSubOptions.forEach(e => {
-      subOptions[e[0]] = e.slice(2, e[1] + 2);
+      switch (e[0]) {
+      case 1:
+        subOptions.CircuitID = e.slice(2, e[1] + 2);
+        subOptions[e[0]] = subOptions.CircuitID;
+        break;
+
+      case 2:
+        subOptions.RemoteID = e.slice(2, e[1] + 2);
+        subOptions[e[0]] = subOptions.RemoteID;
+        break;
+
+      default:
+        subOptions[e[0]] = e.slice(2, e[1] + 2);
+      }
+
     });
 
     return matchedRule[0].extract(subOptions);

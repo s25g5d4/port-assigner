@@ -2,7 +2,7 @@ module.exports = {
   'match': /^ProCurve/,
   'extract': agentInformation => {
     return {
-      'port': agentInformation['1'][0]
+      'port': agentInformation.CircuitID[0]
     };
   }
 }
