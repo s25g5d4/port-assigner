@@ -100,13 +100,13 @@ const writePortMap = dormSwitches => {
 };
 
 const doBbEdgeMap = () => {
-  console.log(`Start at ${(new Date()).toISOString()}`);
+  console.log(`Start at ${(new Date()).toLocaleString()}`);
   SwitchList.findAll(switchFindOptions)
     .then(transformList)
     .then(lookupBackbonePort)
     .then(writePortMap)
     .then(() => {
-      console.log(`Done at ${(new Date()).toISOString()}`);
+      console.log(`Done at ${(new Date()).toLocaleString()}`);
     });
 };
 
