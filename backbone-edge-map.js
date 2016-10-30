@@ -83,14 +83,14 @@ const writePortMap = dormSwitches => {
             const value = encodeSwitchInfo(edge);
 
             redis.set(key, value).then(() => redis.expire(key, 1800));
-            console.log(`"${key}", "${value}"`);
+            console.log(`"${key}", "${edge.ip}", "${edge.name}", "${edge.dorm}"`);
           });
 
           const bbInfoKey = `${bb.ip}:info`;
           const bbValue = encodeSwitchInfo(bb);
 
           redis.set(bbInfoKey, bbValue).then(() => redis.expire(bbInfoKey, 1800));
-          console.log(`"${bbInfoKey}", "${bbValue}"`);
+          console.log(`"${bbInfoKey}", "${bb.ip}", "${bb.name}", "${bb.dorm}"`);
         });
       }
 
@@ -107,6 +107,9 @@ const doBbEdgeMap = () => {
     .then(writePortMap)
     .then(() => {
       console.log(`Done at ${(new Date()).toLocaleString()}`);
+    })
+    .catch(err => {
+      console.error(err);
     });
 };
 
