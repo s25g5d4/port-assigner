@@ -90,6 +90,7 @@ const writePortMap = dormSwitches => {
           const bbValue = encodeSwitchInfo(bb);
 
           redis.set(bbInfoKey, bbValue).then(() => redis.expire(bbInfoKey, 1800));
+          console.log(`"${bbInfoKey}", "${bbValue}"`);
         });
       }
 
