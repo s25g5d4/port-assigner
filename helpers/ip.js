@@ -1,5 +1,14 @@
 exports.decimalToDottedIp = e => {
-  return e.map(e => toString(10)).join('.');
+  if (e.length > 4) {
+    const multipleIp = Array.from(e);
+    const result = [];
+    while (multipleIp.length >= 4) {
+      result.push(multipleIp.splice(0, 4)).map(e => e.toString(16)).join('.');
+    }
+    return result;
+  }
+
+  return e.slice(0, 4).map(e => e.toString(10)).join('.');
 };
 
 exports.cidrToDottedMask = cidr => {
