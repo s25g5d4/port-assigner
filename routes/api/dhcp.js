@@ -7,300 +7,471 @@ const redis = require('../../models/redis');
 const { getMACPortIndex } = require('../../models/switch-snmp');
 const { extractOption82 } = require('../../models/option-82');
 const { getUserIpBySwitchPort } = require('../../models/get-user-ip');
+const { redisValue: { decodeSwitchInfo }, mac: { decimalToMac, macToDecimal }, ip: { decimalToDottedIp, isZero } } = require('../../helpers');
 
 const globalLease = require('config').get('DHCP.lease');
 const globalNameServers = require('config').get('DHCP.nameServers');
 
-const router = express.Router();
-
-const decodeSwitchInfo = value => {
-  const [ ip, mac, name, dorm, mask, community ] = value.split(':');
-  return {
-    'ip': ip,
-    'mac': mac,
-    'name': name,
-    'dorm': dorm,
-    'mask': mask,
-    'community': community
-  };
-}
-
-const findSwitches = (dorm, giaddr) => {
-  const findOptions = {
-    'attributes': ['ip', 'community', 'uplink', 'subnet'],
-    'where': {
-      'dorm': dorm,
-      'level': -1
-    }
-  };
-
-  if (giaddr) {
-    findOptions.where.ip = giaddr.join('.');
-  }
-
-  return SwitchList.findAll(findOptions);
+const fakeIp = {
+  "yiaddr": "140.117.1.1",
+  "router": "140.117.1.2",
+  "subnet_mask": "255.255.255.0",
+  "ip_address_lease_time": 1
 };
 
-const getPortIndex = (switchList, chaddr) => {
-  const findPort = Promise.all( switchList.map(e => getMACPortIndex(e.ip, e.community, chaddr)) );
-  return findPort.then(portIndex => {
-    let whichSwitch;
-    for (whichSwitch = 0; whichSwitch < portIndex.length; ++whichSwitch) {
-      if (portIndex[whichSwitch] !== switchList[whichSwitch].uplink) break;
-    }
-    return Promise.resolve([switchList[whichSwitch], portIndex[whichSwitch]]);
-  });
-};
-
-const getSwitchPort = (switchInfo, portIndex) => {
-  return switchInfo.getSwitchPort({
-    'attributes': ['dorm', 'room', 'plug'],
-    'where': { 'port': portIndex },
-    'raw': true
-  });
-};
-
-const getIp = data => {
-  if (data.length === 0) {
-    return Promise.reject(`cannot find switch port`);
-  }
-
-  const dvo = `${data[0].dorm}${data[0].room}-${data[0].plug}`;
-  return sql.query('SELECT `ip`, `dvo` FROM `ip_dvo` WHERE `dvo`=? OR `dvo`=? ORDER BY `dvo` DESC', {
-    'type': sequelize.QueryTypes.SELECT,
-    'replacements': [dvo, `${data[0].dorm}-gateway`]
-  }).then(data => {
-    if (data.length < 2) return Promise.reject(`cannot find ip of ${dvo}`);
-
-    const userIp = data.filter(e => e.dvo === dvo)[0];
-    const gateway = data.filter(e => e.dvo.match(/gateway/))[0];
-    if (!userIp || !gateway) return Promise.reject(`cannot find ip of ${dvo}`);
-
-    return Promise.resolve({'user': userIp.ip, 'gateway': gateway.ip});
-  });
-};
-
-const generateResponse = (ip, gateway, mask, lease, nameServers) => {
+const generateResponse = function generateResponse(ip, gateway, mask, lease, nameServers) {
   const responseObject = {};
   responseObject.yiaddr = ip;
   responseObject.router = gateway;
   responseObject.subnet_mask = mask;
   responseObject.ip_address_lease_time = lease;
-
-  const resNS = nameServers.map( e => e.split('.').map(e => parseInt(e, 10)) ).reduce((p, c) => p.concat(c));
-  responseObject.name_server = resNS;
+  responseObject.name_server = nameServers.map( e => e.split('.').map(e => parseInt(e, 10)) ).reduce((p, c) => p.concat(c));
 
   return responseObject;
 };
 
-const retrieveDHCPOptions = req => {
-  const switchList = findSwitches(req.params.dorm, req.body.giaddr);
-  const portIndex = switchList.then( data => getPortIndex(data, req.body.chaddr) );
-  const switchPort = portIndex.then( data => getSwitchPort(data[0], data[1]) );
-  const ip = switchPort.then(getIp);
+const router = express.Router();
 
-  return Promise.all([ portIndex, ip ]).then(data => {
-    const maskDecimal = parseInt(data[0][0].subnet.split('/')[1], 10);
-    const maskBinary = Array(maskDecimal).fill('1').concat(Array(32-maskDecimal).fill('0'));
-    const maskDotted = maskBinary.join('').match(/\d{8}/g).map(e => parseInt(e, 2)).join('.');
-    const userIp = data[1].user;
-    const gateway = data[1].gateway;
-    const lease = 14400; // 4 hours
+const getEdgeInfo = function getBbInfo(bbIp, option82) {
+  const bbInfoKey = `${bbIp}:info`;
 
-    const resObj = generateResponse(userIp, gateway, maskDotted, lease);
-
-    return Promise.resolve(resObj);
-  });
-};
-
-const getUserIpWithOption82 = function (giaddr, chaddr, option82) {
-  const redisKey = `${giaddr.join('.')}:info`;
-  return Promise.all([ Promise.resolve(redisKey), redis.get(redisKey) ])
-    .then(data => {
-      const [key, bbInfoRaw] = data;
-      if (!bbInfoRaw) return Promise.reject(`redis "${key}" not found`);
+  return Promise.all([ Promise.resolve(bbInfoKey), redis.get(bbInfoKey) ])
+    .then(([ key, bbInfoRaw ]) => {
+      if (!bbInfoRaw) {
+        return Promise.reject({
+          'type': 'key not found',
+          'data': { 'key': key },
+          'message': `Redis key "${key}" not found`
+        });
+      }
 
       const bbInfo = decodeSwitchInfo(bbInfoRaw);
       const relayInfo = extractOption82(bbInfo.name, option82);
 
-      console.log(`dhcp: bb info: ${JSON.stringify(bbInfo)}, relay info: ${JSON.stringify(relayInfo)}`);
+      const bbPortKey = `${bbInfo.ip}:${relayInfo.port}`;
+      return Promise.all([ Promise.resolve(bbPortKey), redis.get(bbPortKey) ]);
+    });
+};
 
-      const redisKey = `${bbInfo.ip}:${relayInfo.port}`;
-      return Promise.all([ Promise.resolve(redisKey), redis.get(redisKey), chaddr ]);
-    })
-    .then(data => {
-      const [key, edgeRaw, chaddr ] = data;
-      if (!edgeRaw) return Promise.reject(`redis "${key}" not found`);
+const getUserIpWithOption82 = function getUserIpWithOption82(giaddr, chaddr, option82) {
+  return getEdgeInfo(giaddr, option82)
+    .then(([ key, edgeRaw ]) => {
+      if (!edgeRaw) {
+        return Promise.reject({
+          'type': 'key not found',
+          'data': { 'key': key },
+          'message': `redis key "${key}" not found`
+        });
+      }
 
       const edge = decodeSwitchInfo(edgeRaw);
 
-      console.log(`dhcp: edge info: ${JSON.stringify(edge)}, chaddr: ${JSON.stringify(chaddr)}`);
-
-      return Promise.all([ Promise.resolve(edge), getMACPortIndex(edge.ip, edge.community, chaddr) ]);
+      return Promise.all([ Promise.resolve(edge), getMACPortIndex(edge.ip, edge.community, macToDecimal(chaddr)) ]);
     })
-    .then(data => {
-      const [ edge, portIndex ] = data;
-
-      console.log(`dhcp: edge info: ${JSON.stringify(edge)}, port index: ${JSON.stringify(portIndex)}`);
-
+    .then(([ edge, portIndex ]) => {
       return Promise.all([ Promise.resolve(edge), getUserIpBySwitchPort(edge.ip, portIndex) ]);
     })
-    .then(data => {
-      const [ edge, userIp ] = data;
+    .then(([ edge, userIp ]) => {
+      return Promise.resolve([ edge, generateResponse(userIp.ip, userIp.gateway, edge.mask, globalLease, globalNameServers) ]);
+    });
+};
 
-      console.log(`dhcp: edge info: ${JSON.stringify(edge)}, user ip: ${JSON.stringify(userIp)}`);
+const getUserIpFromCache = function getUserIpFromCache(giaddr, chaddr, option82) {
+  return getEdgeInfo(giaddr, option82)
+    .then(([ key, edgeRaw ]) => {
+      if (!edgeRaw) {
+        return Promise.reject({
+          'type': 'key not found',
+          'data': { 'key': key },
+          'message': `Redis key "${key}" not found`
+        });
+      }
 
-      return Promise.resolve( generateResponse(userIp.ip, userIp.gateway, edge.mask, globalLease, globalNameServers) );
+      const edge = decodeSwitchInfo(edgeRaw);
+
+      const edgeMacKey = `${edge.ip}:${chaddr}`;
+      return Promise.all([ Promise.resolve(edge), Promise.resolve(edgeMacKey), redis.get(edgeMacKey)])
+        .then(([edge, key, resJSON]) => {
+          if (!resJSON) {
+            return Promise.reject({
+              'type': 'key not found',
+              'data': { 'key': key },
+              'message': `Redis key "${key}" not found`
+            });
+          }
+
+          return Promise.resolve([ edge, key, resJSON ]);
+        });
+    });
+};
+
+const getUserIpFromXid = function getUserIpFromXid(xid, chaddr) {
+  const xidKey = `${chaddr}:${xid}`;
+  return Promise.all([ Promise.resolve(xidKey), redis.get(xidKey) ])
+    .then(([ key, resJSON ]) => {
+      if (!resJSON) {
+        return Promise.reject({
+          'type': 'key not found',
+          'data': { 'key': key },
+          'message': `Redis key "${key}" not found`
+        });
+      }
+
+      const resObj = JSON.parse(resJSON);
+      return Promise.resolve([ xidKey, resObj ]);
     });
 };
 
 router.post('/discover', function (req, res, next) {
-  const notFound = () => {
+  const giaddr = decimalToDottedIp(req.body.giaddr);
+  const chaddr = decimalToMac(req.body.chaddr);
+  const xid = req.body.xid.map(e => e.toString(16)).join('');
+
+  const respondNotFound = () => {
+    console.log('discover', `"${chaddr}" not found; may be missing giaddr or relay agent information`);
     res
       .set('Content-Type', 'Application/json')
       .status(404)
       .send('{}')
       .end();
+  };
+
+  const respondServerError = err => {
+    console.error('discover', err);
+    res
+      .set('Content-Type', 'Application/json')
+      .status(500)
+      .send('{}')
+      .end();
+  };
+
+  const respondFakeIp = () => {
+    console.log('discover', `fake ip for ${chaddr}`);
+    res
+      .set('Content-Type', 'Application/json')
+      .status(200)
+      .send(JSON.stringify(fakeIp))
+      .end();
+  };
+
+  const respondJSON = resJSON => {
+    console.log('discover', `mac: ${chaddr}, response: ${resJSON}`);
+    res
+      .set('Content-Type', 'Application/json')
+      .status(200)
+      .send(resJSON)
+      .end();
+  };
+
+  const writeXid = (xid, resJSON) => {
+      const xidKey = `${chaddr}:${xid}`;
+      console.log('discover', `write ${xidKey}`);
+      return redis.set(xidKey, resJSON)
+        .then(() => redis.expire(xidKey, 300));
+  };
+
+  const writeMacCache = (edge, resJSON) => {
+    const edgeMacKey = `${edge.ip}:${chaddr}`;
+    console.log('discover', `write ${edgeMacKey}`);
+
+    return redis.set(edgeMacKey, resJSON)
+      .then(() => redis.expire(edgeMacKey, globalLease * 2));
+  };
+
+  const writeFakeIp = xid => {
+    const macFakeIpKey = `${chaddr}:fake_ip`;
+    console.log('discover', `write ${macFakeIpKey}`);
+
+    redis.set(macFakeIpKey, `${xid}`)
+      .then(() => redis.expire(macFakeIpKey, 300));
+  };
+
+  if (isZero(giaddr) || !req.body.options['82']) {
+    respondNotFound();
+    return;
   }
-  if (!req.body.giaddr || !req.body.options['82']) {
-    return notFound();
-  }
 
-  getUserIpWithOption82(req.body.giaddr, req.body.chaddr, req.body.options['82'])
-    .then(resObj => {
+  const macFakeIpKey = `${chaddr}:fake_ip`;
+  Promise.all([ Promise.resolve(macFakeIpKey), redis.get(macFakeIpKey) ])
+    .then(([ key, fakeIp ]) => {
+      if (!fakeIp) {
+        return Promise.reject({
+          'type': 'key not found',
+          'data': { 'key': key },
+          'message': `Redis key ${key} not found`
+        });
+      }
 
-      console.log(`dhcp: response: ${JSON.stringify(resObj)}`);
+      return getUserIpWithOption82(giaddr, chaddr, req.body.options['82']);
+    })
+    .then(([ edge, resObj ]) => {
+      const resJSON = JSON.stringify(resObj);
 
-      res
-        .set('Content-Type', 'Application/json')
-        .status(200)
-        .send(JSON.stringify(resObj))
-        .end();
+      writeXid(xid, resJSON);
+      writeMacCache(edge, resJSON);
+
+      return Promise.resolve(resJSON);
+    })
+    .then(resJSON => {
+      respondJSON(resJSON);
+      return Promise.resolve();
     })
     .catch(err => {
+      if ( (err.type === 'key not found' && /fake_ip$/.test(err.data.key)) || err.type === 'user ip not found') {
 
-      console.log(err);
+        if (err.type === 'key not found') console.log('discover', `No fake_ip found: ${err.data.key}`);
+        else console.log(err.message);
 
-      res
-        .set('Content-Type', 'Application/json')
-        .status(200)
-        .send(`{
-          "yiaddr": "140.117.1.1",
-          "router": "140.117.1.2",
-          "subnet_mask": "255.255.255.0",
-          "ip_address_lease_time": 1
-        }`)
-        .end();
+        writeFakeIp(xid);
 
-      return;
+        const macFakeIpCountKey = `${chaddr}:fake_ip:count`;
+        return Promise.all([ Promise.resolve(macFakeIpCountKey), redis.get(macFakeIpCountKey) ])
+          .then(([ key, fakeIpCount ]) => {
+            if (!fakeIpCount) {
+              redis.incr(key).then(() => redis.expire(key, 3600));
+              return Promise.resolve();
+            }
+            else if (fakeIpCount > 5) {
+              console.log('discover', 'too many tries for fake ip');
+              respondNotFound();
+            }
+            else {
+              respondFakeIp();
+            }
+
+            redis.incr(key);
+            return Promise.resolve();
+          });
+      }
+
+      return Promise.reject(err);
+    })
+    .catch(err => {
+      respondServerError(err);
+      // return Promise.reject(err);
     });
 });
 
 router.post('/request', function (req, res, next) {
-  if (!req.body.giaddr) {
+  const giaddr = decimalToDottedIp(req.body.giaddr);
+  const chaddr = decimalToMac(req.body.chaddr);
+  const requestedIp = decimalToDottedIp(req.body.options['50']);
+  const xid = req.body.xid.map(e => e.toString(16)).join('');
+
+  const respondNotFound = () => {
+    console.log('request', `"${chaddr}" not found; may be missing giaddr or relay agent information`);
+
     res
       .set('Content-Type', 'Application/json')
       .status(404)
       .send('{}')
       .end();
+  };
+
+  const respondServerError = err => {
+    console.error('request', err);
+
+    res
+      .set('Content-Type', 'Application/json')
+      .status(500)
+      .send('{}')
+      .end();
+  };
+
+  const respondForbidden = () => {
+    console.log('request', `"${chaddr}" requesting for ${requestedIp} is forbidden`);
+
+    res
+      .set('Content-Type', 'Application/json')
+      .status(403)
+      .send(`{"requested_ip_address":"${requestedIp}"}`)
+      .end();
+  };
+
+  const respondFakeIp = () => {
+    console.log('request', `fake ip for ${chaddr}`);
+
+    res
+      .set('Content-Type', 'Application/json')
+      .status(200)
+      .send(JSON.stringify(fakeIp))
+      .end();
+  };
+
+  const respondJSON = resJSON => {
+    console.log('request', `mac: ${chaddr}, response: ${resJSON}`);
+
+    res
+      .set('Content-Type', 'Application/json')
+      .status(200)
+      .send(resJSON)
+      .end();
+  };
+
+  const removeXid = xid => {
+    const xidKey = `${chaddr}:${xid}`;
+    console.log('request', `delete ${xidKey}`);
+
+    return redis.del(xidKey);
+  };
+
+  const removeFakeIp = () => {
+    const macFakeIpKey = `${chaddr}:fake_ip`;
+    console.log('request', `delete ${macFakeIpKey}`);
+
+    return redis.del(macFakeIpKey);
+  };
+
+  const writeMacCache = (edge, resJSON) => {
+    const edgeMacKey = `${edge.ip}:${chaddr}`;
+    console.log('request', `write ${edgeMacKey}`);
+
+    return redis.set(edgeMacKey, resJSON)
+      .then(() => redis.expire(edgeMacKey, globalLease * 2));
+  };
+
+  const removeMacCache = () => {
+    const edgeMacKey = `${edge.ip}:${chaddr}`;
+    console.log('request', `delete ${edgeMacKey}`);
+
+    return redis.del(edgeMacKey);
+  };
+
+  if (isZero(giaddr) || isZero(requestedIp) || !req.body.options['82']) {
+    respondNotFound();
+    return;
   }
 
-  if (req.body.options['50'].join('.') === '140.117.1.1') {
-      res
-        .set('Content-Type', 'Application/json')
-        .status(200)
-        .send(`{
-          "yiaddr": "140.117.1.1",
-          "router": "140.117.1.2",
-          "subnet_mask": "255.255.255.0",
-          "ip_address_lease_time": 1
-        }`)
-        .end();
-        return;
+  if (requestedIp === fakeIp.yiaddr) {
+    const macFakeIpKey = `${chaddr}:fake_ip`;
+
+    Promise.all([ Promise.resolve(macFakeIpKey), redis.get(macFakeIpKey) ])
+      .then(([ key, cachedXid ]) => {
+
+        if (!cachedXid) {
+          return Promise.reject({
+            'type': 'key not found',
+            'data': { 'key': key },
+            'message': `Redis key ${chaddr} not found`
+          });
+        }
+        else if (cachedXid !== xid) {
+          return Promise.reject({
+            'type': 'xid not match',
+            'data': {
+              'expected': cachedXid,
+              'received': xid
+            },
+            'message': `fake_ip record xid does not match; expected ${cachedXid}, received: ${xid}`
+          });
+        }
+        else {
+          return Promise.resolve();
+        }
+
+      })
+      .then(() => {
+        respondFakeIp();
+        return Promise.resolve();
+      })
+      .catch(err => {
+        if (err.type) {
+          if (err.type === 'key not found' || err.type === 'xid not match') {
+            if (err.type === 'key not found' && !/fake_ip$/.test(err.data.key)) {
+              console.log('request', `No fake_ip found: ${err.data.key}`);
+            }
+            else {
+              console.log('request', err.message);
+            }
+            removeFakeIp(chaddr);
+            respondForbidden();
+            return Promise.resolve();
+          }
+        }
+        return Promise.reject(err);
+      })
+      .catch(err => {
+        respondServerError(err);
+        // return Promise.reject(err);
+      });
+
+    return;
+
   }
 
-
-  getUserIpWithOption82(req.body.giaddr, req.body.chaddr, req.body.options['82'])
-    .then(resObj => {
-      if (req.body.options['50'].join('.') !== resObj.yiaddr) {
-
-        console.log(`dhcp: requested ip: ${req.body.options['50'].join('.')}, correct ip: ${resObj.yiaddr}`)
-
-        res
-          .set('Content-Type', 'Application/json')
-          .status(403)
-          .send(JSON.stringify({ 'requested_ip_address': req.body.options['50'].join('.') }))
-          .end();
-
-          return;
-      }
-      else {
-        resObj['requested_ip_address'] = resObj.yiaddr;
-      }
-
-      res
-        .set('Content-Type', 'Application/json')
-        .status(200)
-        .send(JSON.stringify(resObj))
-        .end();
+  getUserIpFromXid(xid, chaddr)
+    .then(([ key, resObj ]) => {
+      console.log(`Cache hit: ${key}`);
+      return Promise.resolve(resObj);
     })
     .catch(err => {
+      if (err.type && err.type === 'key not found') {
+        console.log(`Cache miss: ${err.data.key}`);
 
-      console.log(err);
+        return getUserIpWithOption82(giaddr, chaddr, req.body.options['82'])
+          .then(([ edge, resObj ]) => {
+            writeMacCache(edge, JSON.stringify(resObj));
+            return Promise.resolve(resObj);
+          });
+      }
+      else return Promise.reject(err);
+    })
+    .then(resObj => {
+      if (requestedIp !== resObj.yiaddr) {
+        return Promise.reject({
+          'type': 'option not match',
+          'data': {
+            'what': 'requested_ip_address',
+            'expected': resObj.yiaddr,
+            'received': requestedIp
+          },
+          'message': `requested_ip_address does not match; expected ${resObj.yiaddr}, received ${requestedIp}`
+        });
+      }
 
-      res
-        .set('Content-Type', 'Application/json')
-        .status(500)
-        .send('{}')
-        .end();
+      if (req.body.options['1'] && decimalToDottedIp(req.body.options['1']) !== resObj.subnet_mask) {
+        return Promise.reject({
+          'type': 'option not match',
+          'data': {
+            'what': 'subnet_mask',
+            'expected': resObj.subnet_mask,
+            'received': (req.body.options['1'] ? decimalToDottedIp(req.body.options['1']) : '')
+          },
+          'message': `subnet_mask does not match; expected ${resObj.subnet_mask}, received: ${req.body.options['1'] ? decimalToDottedIp(req.body.options['1']) : ''}`
+        });
+      }
 
-      return;
-    });
-});
+      if (req.body.options['3'] && JSON.stringify( decimalToDottedIp(req.body.options['3'].slice(1)) ) !== JSON.stringify(resObj.router)) {
+        return Promise.reject({
+          'type': 'option not match',
+          'data': {
+            'what': 'router',
+            'expected': resObj.router,
+            'received': (req.body.options['3'] ? decimalToDottedIp(req.body.options['3'].slice(1)) : '')
+          },
+          'message': `router does not match; expected ${resObj.router}, received: ${req.body.options['3'] ? decimalToDottedIp(req.body.options['3'].slice(1)) : ''}`
+        });
+      }
 
-router.post('/:dorm/discover', function(req, res, next) {
-  const respond = resObj => {
-    res
-      .set('Content-Type', 'Application/json')
-      .status(200)
-      .send(JSON.stringify(resObj))
-      .end();
-  };
-
-  retrieveDHCPOptions(req)
-    .then(respond)
+      return Promise.resolve(JSON.stringify(resObj));
+    })
+    .then(resJSON => {
+      respondJSON(resJSON);
+      removeXid(xid);
+      return Promise.resolve();
+    })
     .catch(err => {
-      console.log(err);
-      res
-        .set('Content-Type', 'Application/json')
-        .status(500)
-        .send('{}')
-        .end();
+      if (err.type === 'option not match' || err.type === 'user ip not found') {
+        console.log(err.message);
+        respondForbidden();
+        return Promise.resolve();
+      }
 
-      return;
-    });
-});
-
-router.post('/:dorm/request', function(req, res, next) {
-  const respond = resObj => {
-    res
-      .set('Content-Type', 'Application/json')
-      .status(200)
-      .send(JSON.stringify(resObj))
-      .end();
-  };
-
-  retrieveDHCPOptions(req)
-    .then(respond)
+      return Promise.reject(err);
+    })
     .catch(err => {
-      console.log(err);
-      res
-        .set('Content-Type', 'Application/json')
-        .status(500)
-        .send('{}')
-        .end();
-
-      return;
+      respondServerError(err);
+      // return Promise.reject(err);
     });
 });
 
