@@ -1,8 +1,8 @@
-const vendor = require('./vendor');
+const vendor = require('./vendor.json');
 
 const switchTypeList = [];
 
-vendor.forEach(e => switchType.push(`${__dirname}/${e}`) )
+vendor.forEach(e => switchTypeList.push(require(`${__dirname}/${e}`)) );
 
 module.exports.extractOption82 = function extractOption82(switchType, option82) {
   const matchedRule = switchTypeList.filter(e => e.match.test(switchType));
