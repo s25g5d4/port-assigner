@@ -1,6 +1,7 @@
 const redis = require('./models/redis');
 const SwitchList = require('./models/switch-list');
 const { getMACPortIndex } = require('./models/switch-snmp');
+const { redisValue: { encodeSwitchInfo }, mac: { macToDecimal } } = require('./helpers');
 
 const switchFindOptions = {
   'attributes': ['ip', 'mac', 'name', 'dorm', 'subnet', 'level', 'community'],
@@ -11,24 +12,6 @@ const switchFindOptions = {
   ],
   'raw': true
 };
-
-const encodeSwitchInfo = e => {
-  let subnetDecimal = parseInt(e.subnet.split('/')[1], 10);
-  const subnetDotted = [];
-  while (subnetDecimal >= 8) {
-    subnetDotted.push(255);
-    subnetDecimal -= 8;
-  }
-  subnetDotted.push( (0xff << (8 - subnetDecimal) & 0xff) );
-  while (4 - subnetDotted.length) {
-    subnetDotted.push(0);
-  }
-  return `${e.ip}:${e.mac}:${e.name}:${e.dorm}:${subnetDotted.join('.')}:${e.community}`
-}
-
-const macToDecimal = mac => {
-  return mac.match(/../g).map(e => parseInt(e, 16));
-}
 
 const transformList = rows => {
   return Promise.resolve(rows.reduce((p, c) => {
@@ -99,7 +82,10 @@ const writePortMap = dormSwitches => {
 
 };
 
+let mapDoing = false;
+
 const doBbEdgeMap = () => {
+  mapDoint = true;
   console.log(`Start at ${(new Date()).toLocaleString()}`);
   SwitchList.findAll(switchFindOptions)
     .then(transformList)
@@ -107,9 +93,11 @@ const doBbEdgeMap = () => {
     .then(writePortMap)
     .then(() => {
       console.log(`Done at ${(new Date()).toLocaleString()}`);
+      mapDoing = false;
     })
     .catch(err => {
       console.error(err);
+      mapDoing = false;
     });
 };
 
