@@ -29,7 +29,13 @@ module.exports.getUserIpBySwitchPort = function getUserIpBySwitchPort(switchIp, 
     'type': sequelize.QueryTypes.SELECT
   })
     .then(data => {
-      if (data.length !== 2) return Promise.reject(`User IP of ${switchIp}:${switchPort} not found`);
+      if (data.length !== 2) {
+        return Promise.reject({
+          'type': 'user ip not found',
+          'data': { 'switchIp': switchIp, 'switchPort': switchPort },
+          'message': `user ip of ${switchIp}:${switchPort} not found`
+        });
+      }
 
       let ip, gateway;
       if (data[0].dvo.search('gateway') >= 0) {
