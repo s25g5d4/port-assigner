@@ -19,13 +19,14 @@ const fakeIp = {
   "ip_address_lease_time": 1
 };
 
-const generateResponse = function generateResponse(ip, gateway, mask, lease, nameServers) {
+const generateResponse = function generateResponse(ip, gateway, mask, lease, nameServers, serverIdentifier) {
   const responseObject = {};
   responseObject.yiaddr = ip;
   responseObject.router = gateway;
   responseObject.subnet_mask = mask;
   responseObject.ip_address_lease_time = lease;
   responseObject.name_server = nameServers.map( e => e.split('.').map(e => parseInt(e, 10)) ).reduce((p, c) => p.concat(c));
+  responseObject.server_identifier = serverIdentifier;
 
   return responseObject;
 };
@@ -72,7 +73,7 @@ const getUserIpWithOption82 = function getUserIpWithOption82(giaddr, chaddr, opt
       return Promise.all([ Promise.resolve(edge), getUserIpBySwitchPort(edge.ip, portIndex) ]);
     })
     .then(([ edge, userIp ]) => {
-      return Promise.resolve([ edge, generateResponse(userIp.ip, userIp.gateway, edge.mask, globalLease, globalNameServers) ]);
+      return Promise.resolve([ edge, generateResponse(userIp.ip, userIp.gateway, edge.mask, globalLease, globalNameServers, giaddr) ]);
     });
 };
 
@@ -254,8 +255,9 @@ router.post('/discover', function (req, res, next) {
 
 router.post('/request', function (req, res, next) {
   const giaddr = decimalToDottedIp(req.body.giaddr);
+  const ciaddr = decimalToDottedIp(req.body.ciaddr);
   const chaddr = decimalToMac(req.body.chaddr);
-  const requestedIp = decimalToDottedIp(req.body.options['50']);
+  const requestedIp = req.body.options['50'] ? decimalToDottedIp(req.body.options['50']) : '';
   const xid = req.body.xid.map(e => e.toString(16)).join('');
 
   const respondNotFound = () => {
@@ -417,7 +419,18 @@ router.post('/request', function (req, res, next) {
       else return Promise.reject(err);
     })
     .then(resObj => {
-      if (requestedIp !== resObj.yiaddr) {
+      if (!isZero(ciaddr) && ciaddr !== resObj.yiaddr) {
+       return Promise.reject({
+          'type': 'option not match',
+          'data': {
+            'what': 'ciaddr',
+            'expected': resObj.yiaddr,
+            'received': ciaddr
+          },
+          'message': `ciaddr does not match; expected ${resObj.yiaddr}, received ${ciaddr}`
+        }); 
+      }
+      if (requestedIp && requestedIp !== resObj.yiaddr) {
         return Promise.reject({
           'type': 'option not match',
           'data': {
