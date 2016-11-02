@@ -34,3 +34,4 @@ jsconfig.json
 typings.json
 config/*
 !config/default.json
+process.yml
