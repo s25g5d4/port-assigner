@@ -310,6 +310,18 @@ router.post('/request', function (req, res, next) {
       .end();
   };
 
+  const genErrObject = (what, expected, received) => {
+    return {
+      'type': 'option not match',
+      'data': {
+        'what': what,
+        'expected': expected,
+        'received': received
+      },
+      'message': `${what} does not match; expected ${expected}, received ${received}`
+    }
+  };
+
   const removeXid = xid => {
     const xidKey = `${chaddr}:${xid}`;
     console.log('request', `delete ${xidKey}`);
@@ -403,12 +415,22 @@ router.post('/request', function (req, res, next) {
 
   getUserIpFromXid(xid, chaddr)
     .then(([ key, resObj ]) => {
-      console.log(`Cache hit: ${key}`);
+      console.log(`xid found: ${key}`);
       return Promise.resolve(resObj);
     })
     .catch(err => {
       if (err.type && err.type === 'key not found') {
-        console.log(`Cache miss: ${err.data.key}`);
+        console.log(`xid not found: ${err.data.key}`);
+
+        if (isZero(ciaddr)) {
+          return Promise.reject({
+          'type': 'xid not found',
+          'data': {
+            'xid': xid
+          },
+          'message': `DHCPREQUEST from ${chaddr} xid ${xid} not found and ciaddr is zero`
+          });
+        }
 
         return getUserIpWithOption82(giaddr, chaddr, req.body.options['82'])
           .then(([ edge, resObj ]) => {
@@ -420,50 +442,27 @@ router.post('/request', function (req, res, next) {
     })
     .then(resObj => {
       if (!isZero(ciaddr) && ciaddr !== resObj.yiaddr) {
-       return Promise.reject({
-          'type': 'option not match',
-          'data': {
-            'what': 'ciaddr',
-            'expected': resObj.yiaddr,
-            'received': ciaddr
-          },
-          'message': `ciaddr does not match; expected ${resObj.yiaddr}, received ${ciaddr}`
-        }); 
+        return Promise.reject(
+          genErrObject('ciaddr', resObj.yiaddr, ciaddr)
+        );
       }
+
       if (requestedIp && requestedIp !== resObj.yiaddr) {
-        return Promise.reject({
-          'type': 'option not match',
-          'data': {
-            'what': 'requested_ip_address',
-            'expected': resObj.yiaddr,
-            'received': requestedIp
-          },
-          'message': `requested_ip_address does not match; expected ${resObj.yiaddr}, received ${requestedIp}`
-        });
+        return Promise.reject(
+          genErrObject('requested_ip_address', resObj.yiaddr, requestedIp)
+        );
       }
 
       if (req.body.options['1'] && decimalToDottedIp(req.body.options['1']) !== resObj.subnet_mask) {
-        return Promise.reject({
-          'type': 'option not match',
-          'data': {
-            'what': 'subnet_mask',
-            'expected': resObj.subnet_mask,
-            'received': (req.body.options['1'] ? decimalToDottedIp(req.body.options['1']) : '')
-          },
-          'message': `subnet_mask does not match; expected ${resObj.subnet_mask}, received: ${req.body.options['1'] ? decimalToDottedIp(req.body.options['1']) : ''}`
-        });
+        return Promise.reject(
+          genErrObject('subnet_mask', resObj.subnet_mask, (req.body.options['1'] ? decimalToDottedIp(req.body.options['1']) : ''))
+        );
       }
 
       if (req.body.options['3'] && JSON.stringify( decimalToDottedIp(req.body.options['3'].slice(1)) ) !== JSON.stringify(resObj.router)) {
-        return Promise.reject({
-          'type': 'option not match',
-          'data': {
-            'what': 'router',
-            'expected': resObj.router,
-            'received': (req.body.options['3'] ? decimalToDottedIp(req.body.options['3'].slice(1)) : '')
-          },
-          'message': `router does not match; expected ${resObj.router}, received: ${req.body.options['3'] ? decimalToDottedIp(req.body.options['3'].slice(1)) : ''}`
-        });
+        return Promise.reject(
+          genErrObject('router', resObj.router, (req.body.options['3'] ? decimalToDottedIp(req.body.options['3'].slice(1)) : ''))
+        );
       }
 
       return Promise.resolve(JSON.stringify(resObj));
@@ -474,7 +473,7 @@ router.post('/request', function (req, res, next) {
       return Promise.resolve();
     })
     .catch(err => {
-      if (err.type === 'option not match' || err.type === 'user ip not found') {
+      if (err.type === 'option not match' || err.type === 'user ip not found' || err.type === 'xid not found') {
         console.log(err.message);
         respondForbidden();
         return Promise.resolve();
