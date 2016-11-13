@@ -3,6 +3,6 @@ exports.macToDecimal = mac => {
 };
 
 exports.decimalToMac = decimal => {
-  return decimal.map(e => e.toString(16)).join('');
+  return decimal.map(e => `0${e.toString(16)}`.slice(-2)).join('');
 };
 
