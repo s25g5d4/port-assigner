@@ -1,4 +1,4 @@
-const redis = require('./models/redis');
+const redis = require('./models/redis')();
 const SwitchList = require('./models/switch-list');
 const { getMACPortIndex } = require('./models/switch-snmp');
 const { redisValue: { encodeSwitchInfo }, mac: { macToDecimal } } = require('./helpers');
@@ -62,18 +62,25 @@ const writePortMap = dormSwitches => {
           dorm.edge.forEach((edge, i) => {
             if (bb.edgePort[i] === -1) return;
 
-            const key = `${bb.ip}:${bb.edgePort[i]}`;
-            const value = encodeSwitchInfo(edge);
+            const bbPortKey = `${bb.ip}:${bb.edgePort[i]}`;
+            const bbPortValue = encodeSwitchInfo(edge);
 
-            redis.set(key, value);
-            console.log(`"${key}", "${edge.ip}", "${edge.name}", "${edge.dorm}"`);
+            redis.set(bbPortKey, bbPortValue);
+            console.log(`"${bbPortKey}", "${edge.ip}", "${edge.name}", "${edge.dorm}"`);
+
+            const edgeInfoKey = `${edge.ip}:info`;
+            const edgeInfoValue = encodeSwitchInfo(edge);
+
+            redis.set(edgeInfoKey, edgeInfoValue);
+            console.log(`"${edgeInfoKey}", "${edge.ip}", "${edge.name}", "${edge.dorm}"`);
           });
 
           const bbInfoKey = `${bb.ip}:info`;
-          const bbValue = encodeSwitchInfo(bb);
+          const bbInfoValue = encodeSwitchInfo(bb);
 
-          redis.set(bbInfoKey, bbValue);
+          redis.set(bbInfoKey, bbInfoValue);
           console.log(`"${bbInfoKey}", "${bb.ip}", "${bb.name}", "${bb.dorm}"`);
+
         });
       }
 
