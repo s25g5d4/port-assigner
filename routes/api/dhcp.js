@@ -25,7 +25,7 @@ const generateResponse = function generateResponse(ip, gateway, mask, lease, dns
   responseObject.router = gateway;
   responseObject.subnet_mask = mask;
   responseObject.ip_address_lease_time = lease;
-  responseObject.domain_server = dns;
+  responseObject.domain_name_servers = dns;
   responseObject.server_identifier = serverIdentifier;
 
   return responseObject;
