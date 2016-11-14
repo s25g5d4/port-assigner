@@ -10,7 +10,7 @@ const { getUserIpBySwitchPort } = require('../../models/get-user-ip');
 const { redisValue: { decodeSwitchInfo }, mac: { decimalToMac, macToDecimal }, ip: { decimalToDottedIp, isZero } } = require('../../helpers');
 
 const globalLease = require('config').get('DHCP.lease');
-const globalNameServers = require('config').get('DHCP.nameServers');
+const globalDNS = require('config').get('DHCP.DNS');
 
 const fakeIp = {
   "yiaddr": "140.117.1.1",
@@ -19,13 +19,13 @@ const fakeIp = {
   "ip_address_lease_time": 1
 };
 
-const generateResponse = function generateResponse(ip, gateway, mask, lease, nameServers, serverIdentifier) {
+const generateResponse = function generateResponse(ip, gateway, mask, lease, dns, serverIdentifier) {
   const responseObject = {};
   responseObject.yiaddr = ip;
   responseObject.router = gateway;
   responseObject.subnet_mask = mask;
   responseObject.ip_address_lease_time = lease;
-  responseObject.name_server = nameServers.map( e => e.split('.').map(e => parseInt(e, 10)) ).reduce((p, c) => p.concat(c));
+  responseObject.domain_server = dns;
   responseObject.server_identifier = serverIdentifier;
 
   return responseObject;
@@ -73,7 +73,7 @@ const getUserIpWithOption82 = function getUserIpWithOption82(giaddr, chaddr, opt
       return Promise.all([ Promise.resolve(edge), Promise.resolve(portIndex), getUserIpBySwitchPort(edge.ip, portIndex) ]);
     })
     .then(([ edge, portIndex, userIp ]) => {
-      return Promise.resolve([ edge, portIndex, generateResponse(userIp.ip, userIp.gateway, edge.mask, globalLease, globalNameServers, giaddr) ]);
+      return Promise.resolve([ edge, portIndex, generateResponse(userIp.ip, userIp.gateway, edge.mask, globalLease, globalDNS, giaddr) ]);
     });
 };
 
