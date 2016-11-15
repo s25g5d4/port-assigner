@@ -338,7 +338,7 @@ router.post('/request', function (req, res, next) {
 
   const writeMacCache = (edgeIp, portIndex, resJSON) => {
     const edgeMacKey = `${edgeIp}:${chaddr}`;
-    console.log('discover', `write ${edgeMacKey}`);
+    console.log('discover', `write cache ${edgeMacKey}`);
 
     return redis.set(edgeMacKey, `${edgeIp}:${portIndex}:${resJSON}`)
       .then(() => redis.expire(edgeMacKey, globalLease * 10));
