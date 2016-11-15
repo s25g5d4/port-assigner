@@ -34,7 +34,6 @@ mq.on('message', function (channel, message) {
           const edge = decodeSwitchInfo(edgeInfoRaw);
 
           const delayGetPortIndex = new Promise((resolve, reject) => {
-            console.log(Date.now() - timestamp);
             setTimeout(function () {
               getMACPortIndex(edge.ip, edge.community, macToDecimal(mac))
                 .then(resolve)
