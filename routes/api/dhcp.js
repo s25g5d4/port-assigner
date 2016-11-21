@@ -265,6 +265,7 @@ router.post('/request', function (req, res, next) {
   const ciaddr = decimalToDottedIp(req.body.ciaddr);
   const chaddr = decimalToMac(req.body.chaddr);
   const requestedIp = req.body.options['50'] ? decimalToDottedIp(req.body.options['50']) : '';
+  const option82 = req.body.options['82'] || [];
   const xid = req.body.xid.map(e => e.toString(16)).join('');
 
   const respondNotFound = () => {
@@ -338,7 +339,7 @@ router.post('/request', function (req, res, next) {
 
   const writeMacCache = (edgeIp, portIndex, resJSON) => {
     const edgeMacKey = `${edgeIp}:${chaddr}`;
-    console.log('discover', `write cache ${edgeMacKey}`);
+    console.log('request', `write cache ${edgeMacKey}`);
 
     return redis.set(edgeMacKey, `${edgeIp}:${portIndex}:${resJSON}`)
       .then(() => redis.expire(edgeMacKey, globalLease * 10));
@@ -376,6 +377,29 @@ router.post('/request', function (req, res, next) {
         }
         else {
           respondFakeIp();
+
+          getEdgeInfo(giaddr, option82)
+            .then(([key, edgeInfoRaw]) => {
+              if (!edgeInfoRaw) {
+                return Promise.reject({
+                  'type': 'key not found',
+                  'data': { 'key': key },
+                  'message': `redis key ${key} not found`
+                });
+              }
+
+              const edge = decodeSwitchInfo(edgeInfoRaw);
+              return Promise.resolve(edge);
+            })
+            .then(edge => {
+              console.log('request', `push check_port ${edge.ip}:0:${chaddr}:${Date.now()}`);
+              return redis.rpush('check_port', `${edge.ip}:0:${chaddr}:${Date.now()}`);
+            })
+            .then(() => {
+              console.log('request', 'publish check_port notify');
+              return redis.publish('check_port:notify', '');
+            });
+
           return Promise.resolve();
         }
 
@@ -397,7 +421,6 @@ router.post('/request', function (req, res, next) {
       });
 
     return;
-
   }
 
   console.log('request', 'get user ip with xid');
@@ -422,7 +445,7 @@ router.post('/request', function (req, res, next) {
         // }
 
         console.log('request', 'get user ip with option 82');
-        return getUserIpWithOption82(giaddr, chaddr, req.body.options['82'])
+        return getUserIpWithOption82(giaddr, chaddr, option82)
           .then(([edge, portIndex, resObj]) => {
             writeMacCache(edge.ip, portIndex, JSON.stringify(resObj));
             return Promise.resolve([ edge, portIndex, resObj ]);
