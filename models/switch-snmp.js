@@ -7,7 +7,8 @@ const dot1qTpFdbPort = '1.3.6.1.2.1.17.7.1.2.2.1.2';
 const dot1dTpFdbPort = '1.3.6.1.2.1.17.4.3.1.2';
 const ifAdminStatus = '1.3.6.1.2.1.2.2.1.7';
 const snmpOptions = {
-  'version': snmp.Version2c
+  'version': snmp.Version2c,
+  'timeout': 1000
 };
 
 const getSwitchPortIndex = function getSwitchPortIndex(switchIp, community) {
