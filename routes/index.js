@@ -2,7 +2,7 @@ var express = require('express');
 var router = express.Router();
 
 var api = require('./api');
-var edit = require('./edit');
+var view = require('./view');
 
 const SwitchList = require('../models/switch-list');
 
@@ -13,15 +13,16 @@ router.get('/', function(req, res, next) {
     'attributes': ['ip', 'name', 'uptime', 'full', 'level'],
     'where': {
       'level': { $ne: 0 }
-    }
+    },
+    'order': "full,dorm,ip"
   }).then(list => {
     list = list.map(e => e.get({ 'plain': true }));
-    res.render('index', { title: 'Express', 'list': list });
+    res.render('index', { title: 'Port-Assigner', 'list': list });
   });
 
 });
 
-router.use('/edit', edit);
+router.use('/view', view);
 
 router.use('/api', api);
 

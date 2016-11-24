@@ -17,8 +17,8 @@ router.get('/:ip', function (req, res, next) {
     switchInfo.getSwitchPort({ 'raw': true }).then(switchPort => {
       switchPort.sort( (a, b) => parseInt(a.port, 10) - parseInt(b.port, 10) );
 
-      res.render('edit', {
-        'title': `Edit ${req.params.ip}`,
+      res.render('view', {
+        'title': `View ${req.params.ip}`,
         'switchInfo': switchInfo.get({ 'plain': true }),
         'switchPort': switchPort
       });
