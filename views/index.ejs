@@ -2,31 +2,32 @@
 <html>
   <head>
     <title><%= title %></title>
-    <link rel='stylesheet' href='/stylesheets/style.css' />
+    <!--    <link rel='stylesheet' href='/stylesheets/style.css' /> -->
+    <link href="/bootstrap/css/bootstrap.min.css" rel="stylesheet">
   </head>
   <body>
-    <h1><%= title %></h1>
-    <table>
-      <thead>
-	      <tr>
-		      <th>IP</th>
-		      <th>Device Type</th>
-		      <th>Up Time</th>
-		      <th>Describe</th>
-          <th>edit</th>
-	      </tr>
-	    </thead>
-      <tbody>
-        <% for (let info of list) { %>
-        <tr>
-          <td><%= info.ip %></td>
-          <td><%= info.name %></td>
-          <td><%= info.uptime %></td>
-          <td><%= info.full %></td>
-          <td><a href="<%= `/edit/${info.ip}` %>">edit</a></td>
-        </tr>
-        <% } %>
-      </tbody>
-    </table>
+    <div class="container">
+      <h1 class="text-center"><%= title %></h1>
+      <table class="table table-hover table-striped table-condensed text-center">
+        <thead class="bg-primary">
+  	      <tr>
+                <th class="text-center">IP</th>
+  		      <th class="text-center">Device Type</th>
+  		      <th class="text-center">Describe</th>
+                <th class="text-center">View</th>
+  	      </tr>
+  	    </thead>
+        <tbody>
+          <% for (let info of list) { %>
+          <tr>
+            <td><%= info.ip %></td>
+            <td><%= info.name %></td>
+            <td><%= info.full %></td>
+            <td><a href="<%= `/view/${info.ip}` %>">view</a></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
   </body>
 </html>

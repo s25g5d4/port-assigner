@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= title %></title>
+    <!-- <link rel="stylesheet" href="/stylesheets/style.css" /> -->
+    <link rel="stylesheet" href="/bootstrap/css/bootstrap.min.css" />
+  </head>
+  <body class="text-center">
+    <div class="container">
+      <h1><%= title %></h1>
+      <table class="table">
+        <tbody>
+          <tr>
+            <th class="text-center bg-primary col-sm-3">Name</th>
+            <td class="bg-info col-sm-9"><%= switchInfo.name %></td>
+          </tr>
+          <tr>
+            <th class="text-center bg-primary col-sm-3">Description</th>
+            <td class="bg-info col-sm-9"><%= switchInfo.full %></td>
+          </tr>
+        </tbody>
+      </table>
+      <p></p>
+      <table class="port-table table table-bordered table-condensed">
+        <tbody>
+          <% var portFirstHalf = switchPort.slice(0, switchPort.length / 2); %>
+
+          <tr>
+            <th class="text-center bg-primary">Port</th>
+            <% for (let portInfo of portFirstHalf) { %>
+            <td class="bg-info"><%= portInfo.port %></td>
+            <% } %>
+          </tr>
+
+          <tr>
+            <th class="text-center bg-primary">Dorm</th>
+            <% for (let portInfo of portFirstHalf) { %>
+            <td class="bg-info"><%= portInfo.dorm %></td>
+            <% } %>
+          </tr>
+
+          <tr>
+            <th class="text-center bg-primary">Room</th>
+            <% for (let portInfo of portFirstHalf) { %>
+            <td class="bg-info"><%= portInfo.room %></td>
+            <% } %>
+          </tr>
+
+          <tr>
+            <th class="text-center bg-primary">Plug</th>
+            <% for (let portInfo of portFirstHalf) { %>
+            <td class="bg-info"><%= portInfo.plug %></td>
+            <% } %>
+          </tr>
+
+          <tr>
+            <th class="text-center bg-primary">Special</th>
+            <% for (let portInfo of portFirstHalf) { %>
+            <td class="bg-info">
+              <%- portInfo.special === '1' ? '<span class="glyphicon glyphicon-ok" aria-hidden="true"></span>' : '' %>
+            </td>
+            <% } %>
+          </tr>
+
+        </tbody>
+      </table>
+          <!-- <tr>
+            <td colspan="<%= portFirstHalf.length + 1 %>"></td>
+          </tr> -->
+      <table class="port-table table table-bordered table-condensed">
+        <tbody>
+          <% const portLastHalf = switchPort.slice(switchPort.length / 2); %>
+
+          <tr>
+            <th class="text-center bg-primary">Port</th>
+            <% for (let portInfo of portLastHalf) { %>
+            <td class="bg-info"><%= portInfo.port %></td>
+            <% } %>
+          </tr>
+
+          <tr>
+            <th class="text-center bg-primary">Dorm</th>
+            <% for (let portInfo of portLastHalf) { %>
+            <td class="bg-info"><%= portInfo.dorm %></td>
+            <% } %>
+          </tr>
+
+          <tr>
+            <th class="text-center bg-primary">Room</th>
+            <% for (let portInfo of portLastHalf) { %>
+            <td class="bg-info"><%= portInfo.room %></td>
+            <% } %>
+          </tr>
+
+          <tr>
+            <th class="text-center bg-primary">Plug</th>
+            <% for (let portInfo of portLastHalf) { %>
+            <td class="bg-info"><%= portInfo.plug %></td>
+            <% } %>
+          </tr>
+
+          <tr>
+            <th class="text-center bg-primary">Special</th>
+            <% for (let portInfo of portLastHalf) { %>
+            <td class="bg-info">
+              <%- portInfo.special === '1' ? '<span class="glyphicon glyphicon-ok" aria-hidden="true"></span>' : '' %>
+            </td>
+            <% } %>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>
