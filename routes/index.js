@@ -14,7 +14,7 @@ router.get('/', function(req, res, next) {
     'where': {
       'level': { $ne: 0 }
     },
-    'order': "full,dorm,ip"
+    'order': 'full,dorm,ip'
   }).then(list => {
     list = list.map(e => e.get({ 'plain': true }));
     res.render('index', { title: 'Port-Assigner', 'list': list });
