@@ -1,5 +1,7 @@
 const express = require('express');
 const sequelize = require('sequelize');
+const winston = require('winston');
+const moment = require('moment');
 
 const SwitchList = require('../../models/switch-list');
 const sql = require('../../models/sql');
@@ -11,6 +13,28 @@ const { redisValue: { decodeSwitchInfo }, mac: { decimalToMac, macToDecimal }, i
 
 const globalLease = require('config').get('DHCP.lease');
 const globalDNS = require('config').get('DHCP.DNS');
+
+require('winston-redis').Redis;
+
+const logger = new winston.Logger({
+  'level': 'info',
+  transports: [
+    new winston.transports.Console({
+      'timestamp': () => {
+        return moment().format('YYYY-MM-DD HH:mm:ss Z');
+      },
+      'colorize': true
+    }),
+    new winston.transports.Redis({ 'channel': 'dhcp' })
+  ]
+});
+
+setImmediate(() => {
+  const app = require('../../app');
+  if (app.get('env') === 'development') {
+    logger.transports.console.level = 'debug';
+  }
+});
 
 const fakeIp = {
   "yiaddr": "140.117.1.1",
@@ -30,8 +54,6 @@ const generateResponse = function generateResponse(ip, gateway, mask, lease, dns
 
   return responseObject;
 };
-
-const router = express.Router();
 
 const getEdgeInfo = function getBbInfo(bbIp, option82) {
   const bbInfoKey = `${bbIp}:info`;
@@ -126,99 +148,173 @@ const getUserIpWithXid = function getUserIpWithXid(xid, chaddr) {
     });
 };
 
+const respondNotFound = function respondNotFound(res, log) {
+  // console.log('discover', `"${chaddr}" not found; may be missing giaddr or relay agent information`);
+  logger.info(log.message, log.data);
+
+  res
+    .set('Content-Type', 'Application/json')
+    .status(404)
+    .send('{}')
+    .end();
+};
+
+const respondForbidden = function respondForbidden(res, log, resJSON) {
+  // console.log('discover', `too many fake ip sent to ${chaddr}`);
+  logger.info(log.message, log.data);
+
+  resJSON = resJSON || '{}';
+  res
+    .set('Content-Type', 'Application/json')
+    .status(403)
+    .send(resJSON)
+    .end();
+};
+
+const respondServerError = function respondServerError(res, log) {
+  logger.error(log.message, log.data);
+  logger.debug(log.message, Object.assign({ 'stack': log.stack }, log.data));
+
+  res
+    .set('Content-Type', 'Application/json')
+    .status(500)
+    .send('{}')
+    .end();
+};
+
+const respondJSON = function respondJSON(res, log, resJSON) {
+  if (typeof resJSON !== 'string') throw TypeError('resJSON is not a string');
+
+  // console.log('discover', `response: ${resJSON}`);
+  logger.info(log.message, log.data);
+  logger.debug(log.message, Object.assign({ 'response': resJSON }, log.data));
+
+  res
+    .set('Content-Type', 'Application/json')
+    .status(200)
+    .send(resJSON)
+    .end();
+};
+
+const writeMacCache = (edgeIp, portIndex, chaddr, resJSON, loggingData) => {
+  const edgeMacKey = `${edgeIp}:${chaddr}`;
+  logger.debug('write cache', Object.assign({ 'key': edgeMacKey }, loggingData));
+
+  return redis.set(edgeMacKey, `${edgeIp}:${portIndex}:${resJSON}`)
+    .then(() => redis.expire(edgeMacKey, globalLease * 10));
+
+};
+
+const router = express.Router();
+
 router.post('/discover', function (req, res, next) {
   const giaddr = decimalToDottedIp(req.body.giaddr);
   const chaddr = decimalToMac(req.body.chaddr);
   const xid = req.body.xid.map(e => e.toString(16)).join('');
   const option82 = req.body.options['82'] || [];
 
-  const respondNotFound = () => {
-    console.log('discover', `"${chaddr}" not found; may be missing giaddr or relay agent information`);
-    res
-      .set('Content-Type', 'Application/json')
-      .status(404)
-      .send('{}')
-      .end();
+  const loggingData = {
+    'requestType': 'discover',
+    'xid': xid,
+    'chaddr': chaddr
   };
 
-  const respondForbidFakeIp = () => {
-    console.log('discover', `too many fake ip sent to ${chaddr}`);
-
-    res
-      .set('Content-Type', 'Application/json')
-      .status(403)
-      .send('{}')
-      .end();
-  };
-
-  const respondServerError = err => {
-    console.error('discover', err);
-    res
-      .set('Content-Type', 'Application/json')
-      .status(500)
-      .send('{}')
-      .end();
-  };
-
-  const respondFakeIp = () => {
-    console.log('discover', `send fake ip for ${chaddr}`);
-    res
-      .set('Content-Type', 'Application/json')
-      .status(200)
-      .send(JSON.stringify(fakeIp))
-      .end();
-  };
-
-  const respondJSON = resJSON => {
-    console.log('discover', `response: ${resJSON}`);
-    res
-      .set('Content-Type', 'Application/json')
-      .status(200)
-      .send(resJSON)
-      .end();
-  };
-
-  const writeXid = (xid, edgeIp, portIndex, resJSON) => {
+  const writeXid = (edgeIp, portIndex, resJSON) => {
     const xidKey = `${chaddr}:${xid}`;
-    console.log('discover', `write xid ${xidKey}`);
+    logger.debug('write xid', Object.assign({ 'key': xidKey }, loggingData));
 
     return redis.set(xidKey, `${edgeIp}:${portIndex}:${resJSON}`)
       .then(() => redis.expire(xidKey, 300));
   };
 
-  const writeMacCache = (edgeIp, portIndex, resJSON) => {
-    const edgeMacKey = `${edgeIp}:${chaddr}`;
-    console.log('discover', `write cache ${edgeMacKey}`);
-
-    return redis.set(edgeMacKey, `${edgeIp}:${portIndex}:${resJSON}`)
-      .then(() => redis.expire(edgeMacKey, globalLease * 10));
-  };
-
   const writeFakeIp = xid => {
     const macFakeIpKey = `${chaddr}:fake_ip`;
-    console.log('discover', `write fake ip ${macFakeIpKey}`);
+    logger.debug('write fake ip', Object.assign({ 'key': macFakeIpKey }, loggingData));
 
     redis.rpush(macFakeIpKey, `${xid}`)
       .then(() => redis.expire(macFakeIpKey, 3600));
   };
 
-  if (isZero(giaddr) || !option82) {
-    respondNotFound();
+  const checkAndSendFakeIp = () => {
+    const macFakeIpKey = `${chaddr}:fake_ip`;
+    return Promise.all([ Promise.resolve(macFakeIpKey), redis.llen(macFakeIpKey) ])
+      .then(([ key, fakeIpCount ]) => {
+        if (fakeIpCount >= 10) {
+          respondForbidden(res, {
+            'message': 'too many fake ip tries',
+            'data': Object.assign({ 'fakeIpCount': fakeIpCount }, loggingData)
+          });
+        }
+        else {
+          writeFakeIp(xid);
+
+          respondJSON(res, {
+            'message': 'send fake ip',
+            'data': Object.assign({ 'fakeIpCount': fakeIpCount + 1 }, loggingData)
+          }, JSON.stringify(fakeIp));
+        }
+
+        return Promise.resolve();
+      });
+
+  };
+
+  if (isZero(giaddr)) {
+    respondNotFound(res, {
+      'message': 'giaddr not found',
+      'data': loggingData
+    });
+
     return;
   }
 
-  console.log('discover', 'get user ip with option 82');
+  loggingData.giaddr = giaddr;
+
+  if (!option82) {
+    respondNotFound(res, {
+      'message': 'Option 82 Relay Agent Information not found',
+      'data': loggingData
+    });
+
+    return;
+  }
+
+  logger.debug('get user ip with option 82', loggingData);
+
   getUserIpWithOption82(giaddr, chaddr, option82)
     .then(([ edge, portIndex, resObj ]) => {
-      writeMacCache(edge.ip, portIndex, JSON.stringify(resObj));
+      loggingData.edge = edge.ip;
+      loggingData.portIndex = portIndex;
+      loggingData.yiaddr = resObj.yiaddr;
+      loggingData.subnetMask = resObj.subnet_mask;
+      loggingData.router = resObj.router;
+
+      logger.debug('user ip found', loggingData);
+
+      writeMacCache(edge.ip, portIndex, chaddr, JSON.stringify(resObj), loggingData);
+
       return Promise.resolve([ edge, portIndex, resObj ]);
     })
     .catch(err => {
+      // fail to get user ip with option 82
       if (err.type === 'snmp not found' || err.type === 'user ip not found') {
-        console.log('discover', err.message);
+        const localLoggingData = {};
+        Object.assign(localLoggingData, loggingData);
+        Object.assign(localLoggingData, err.data);
+        logger.debug(err.type, localLoggingData);
 
-        console.log('discover', 'get user ip from cache');
-        return getUserIpFromCache(giaddr, chaddr, option82);
+        logger.debug('get user ip from cache', loggingData);
+        return getUserIpFromCache(giaddr, chaddr, option82)
+          .then(([ edge, portIndex, resObj ]) => {
+            loggingData.edge = edge.ip;
+            loggingData.portIndex = portIndex;
+            loggingData.yiaddr = resObj.yiaddr;
+            loggingData.subnetMask = resObj.subnet_mask;
+            loggingData.router = resObj.router;
+            loggingData.cache = true;
+
+            return Promise.resolve([ edge, portIndex, resObj ]);
+          });
       }
 
       return Promise.reject(err);
@@ -226,37 +322,55 @@ router.post('/discover', function (req, res, next) {
     .then(([ edge, portIndex, resObj ]) => {
       const resJSON = JSON.stringify(resObj);
 
-      writeXid(xid, edge.ip, portIndex, resJSON);
+      writeXid(edge.ip, portIndex, resJSON);
 
-      console.log('discover', `${chaddr} is at ${edge.ip} port ${portIndex}`);
-      respondJSON(resJSON);
+      respondJSON(res, {
+        'message': 'send response',
+        'data': loggingData
+      }, resJSON);
+
       return Promise.resolve();
     })
     .catch(err => {
+      // fail to get user ip from cache
       if (err.type === 'key not found') {
-        console.log('discover', err.message);
-        console.log('discover', 'trying to send fake ip');
+        if (err.data.key.search( new RegExp(`${chaddr}$`) ) < 0) return Promise.reject(err);
+          const localLoggingData = {};
+          Object.assign(localLoggingData, loggingData);
+          Object.assign(localLoggingData, err.data);
+          logger.debug(err.type, localLoggingData);
 
-        const macFakeIpKey = `${chaddr}:fake_ip`;
-        return Promise.all([ Promise.resolve(macFakeIpKey), redis.llen(macFakeIpKey) ])
-          .then(([ key, fakeIpCount ]) => {
-            if (fakeIpCount >= 10) {
-              respondForbidFakeIp();
-            }
-            else {
-              writeFakeIp(xid);
-              respondFakeIp();
+          return getEdgeInfo(giaddr, option82)
+          .then(([ key, edgeRaw ]) => {
+            if (!edgeRaw) {
+              return Promise.reject({
+                'type': 'key not found',
+                'data': { 'key': key },
+                'message': `redis key "${key}" not found`
+              });
             }
 
-            return Promise.resolve();
+            const edge = decodeSwitchInfo(edgeRaw);
+            loggingData.edge = edge.ip;
+
+            logger.debug('trying to send fake ip', loggingData);
+
+            return checkAndSendFakeIp();
           });
       }
 
       return Promise.reject(err);
     })
     .catch(err => {
-      respondServerError(err);
-      // return Promise.reject(err);
+      const localLoggingData = {};
+      Object.assign(localLoggingData, loggingData);
+      Object.assign(localLoggingData, err.data);
+
+      respondServerError(res, {
+        'message': err.type || err.message,
+        'stack': err.stack || '',
+        'data': loggingData
+      });
     });
 });
 
@@ -268,54 +382,10 @@ router.post('/request', function (req, res, next) {
   const option82 = req.body.options['82'] || [];
   const xid = req.body.xid.map(e => e.toString(16)).join('');
 
-  const respondNotFound = () => {
-    console.log('request', `"${chaddr}" not found; may be missing giaddr or relay agent information`);
-
-    res
-      .set('Content-Type', 'Application/json')
-      .status(404)
-      .send('{}')
-      .end();
-  };
-
-  const respondServerError = err => {
-    console.error('request', err);
-
-    res
-      .set('Content-Type', 'Application/json')
-      .status(500)
-      .send('{}')
-      .end();
-  };
-
-  const respondForbidden = () => {
-    console.log('request', `"${chaddr}" requesting for ${requestedIp} is forbidden`);
-
-    res
-      .set('Content-Type', 'Application/json')
-      .status(403)
-      .send(`{"requested_ip_address":"${requestedIp}"}`)
-      .end();
-  };
-
-  const respondFakeIp = () => {
-    console.log('request', `send fake ip for ${chaddr}`);
-
-    res
-      .set('Content-Type', 'Application/json')
-      .status(200)
-      .send(JSON.stringify(fakeIp))
-      .end();
-  };
-
-  const respondJSON = resJSON => {
-    console.log('request', `response: ${resJSON}`);
-
-    res
-      .set('Content-Type', 'Application/json')
-      .status(200)
-      .send(resJSON)
-      .end();
+  const loggingData = {
+    'requestType': 'request',
+    'xid': xid,
+    'chaddr': chaddr
   };
 
   const genErrObject = (what, expected, received) => {
@@ -332,32 +402,63 @@ router.post('/request', function (req, res, next) {
 
   const removeXid = xid => {
     const xidKey = `${chaddr}:${xid}`;
-    console.log('request', `delete ${xidKey}`);
+    logger.debug('remove xid', Object.assign({ 'key': xidKey }, loggingData));
 
     return redis.del(xidKey);
   };
 
-  const writeMacCache = (edgeIp, portIndex, resJSON) => {
-    const edgeMacKey = `${edgeIp}:${chaddr}`;
-    console.log('request', `write cache ${edgeMacKey}`);
+  if (isZero(giaddr)) {
+    respondNotFound(res, {
+      'message': 'giaddr not found',
+      'data': loggingData
+    });
 
-    return redis.set(edgeMacKey, `${edgeIp}:${portIndex}:${resJSON}`)
-      .then(() => redis.expire(edgeMacKey, globalLease * 10));
-  };
+    return;
+  }
 
-  if (isZero(giaddr) || isZero(requestedIp) || !req.body.options['82']) {
-    respondNotFound();
+  loggingData.giaddr = giaddr;
+
+  if (!requestedIp || isZero(requestedIp)) {
+    respondNotFound(res, {
+      'message': 'requested_ip_address not found',
+      'data': loggingData
+    });
+
+    return;
+  }
+
+  loggingData.requestedIp = requestedIp;
+
+  if (!option82) {
+    respondNotFound(res, {
+      'message': 'Option 82 Relay Agent Information not found',
+      'data': loggingData
+    });
+
     return;
   }
 
   if (requestedIp === fakeIp.yiaddr) {
-    console.log('request', `receive fake ip request from ${chaddr} with xid ${xid}`);
+    // console.log('request', `receive fake ip request from ${chaddr} with xid ${xid}`);
+    getEdgeInfo(giaddr, option82)
+      .then(([ key, edgeInfoRaw ]) => {
+        if (!edgeInfoRaw) {
+          return Promise.reject({
+          'type': 'key not found',
+          'data': { 'key': key },
+          'message': `redis key "${key}" not found`
+          });
+        }
 
-    const macFakeIpKey = `${chaddr}:fake_ip`;
+        const edge = decodeSwitchInfo(edgeInfoRaw);
+        loggingData.edge = edge.ip;
 
-    Promise.all([ Promise.resolve(macFakeIpKey), redis.lrange(macFakeIpKey, 0, -1) ])
-      .then(([ key, cachedXids ]) => {
+        logger.debug('receive fake ip request', loggingData);
 
+        const macFakeIpKey = `${chaddr}:fake_ip`;
+        return Promise.all([ edge, Promise.resolve(macFakeIpKey), redis.lrange(macFakeIpKey, 0, -1) ])
+      })
+      .then(([ edge, key, cachedXids ]) => {
         if (!cachedXids || cachedXids.length === 0) {
           return Promise.reject({
             'type': 'key not found',
@@ -365,7 +466,8 @@ router.post('/request', function (req, res, next) {
             'message': `redis key ${key} not found`
           });
         }
-        else if (cachedXids.indexOf(xid) < 0) {
+
+        if (cachedXids.indexOf(xid) < 0) {
           return Promise.reject({
             'type': 'xid not match',
             'data': {
@@ -375,86 +477,100 @@ router.post('/request', function (req, res, next) {
             'message': `fake_ip record xid does not match; expected ${JSON.stringify(cachedXids)}, received: ${xid}`
           });
         }
-        else {
-          respondFakeIp();
 
-          getEdgeInfo(giaddr, option82)
-            .then(([key, edgeInfoRaw]) => {
-              if (!edgeInfoRaw) {
-                return Promise.reject({
-                  'type': 'key not found',
-                  'data': { 'key': key },
-                  'message': `redis key ${key} not found`
-                });
-              }
+        respondJSON(res, {
+          'message': 'send fake ip',
+          'data': loggingData
+        }, JSON.stringify(fakeIp));
 
-              const edge = decodeSwitchInfo(edgeInfoRaw);
-              return Promise.resolve(edge);
-            })
-            .then(edge => {
-              console.log('request', `push check_port ${edge.ip}:0:${chaddr}:${Date.now()}`);
-              return redis.rpush('check_port', `${edge.ip}:0:${chaddr}:${Date.now()}`);
-            })
-            .then(() => {
-              console.log('request', 'publish check_port notify');
-              return redis.publish('check_port:notify', '');
-            });
+        loggingData.portIndex = 0;
 
-          return Promise.resolve();
-        }
+        logger.info('push check_port', loggingData);
+        redis.rpush('check_port', `${edge.ip}:0:${chaddr}:${Date.now()}`)
+          .then(() => {
+            logger.debug('publish check_port notify', loggingData);
+            return redis.publish('check_port:notify', '');
+          });
 
+        return Promise.resolve();
       })
       .catch(err => {
-        if (err.type) {
-          if (err.type === 'key not found' || err.type === 'xid not match') {
-            console.log('request', err.message);
-            respondForbidden();
-            return Promise.resolve();
-          }
+        if (err.type === 'key not found' || err.type === 'xid not match') {
+          const localLoggingData = {};
+          Object.assign(localLoggingData, loggingData);
+          Object.assign(localLoggingData, err.data);
+          logger.debug(err.type, localLoggingData);
+
+          respondForbidden(res, {
+            'message': 'forbid fake ip request',
+            'data': loggingData
+          }, `{"requested_ip_address":"${requestedIp}"}`);
+
+          return Promise.resolve();
         }
 
         return Promise.reject(err);
       })
       .catch(err => {
-        respondServerError(err);
-        // return Promise.reject(err);
+        const localLoggingData = {};
+        Object.assign(localLoggingData, loggingData);
+        Object.assign(localLoggingData, err.data);
+
+        respondServerError(res, {
+          'message': err.type || err.message,
+          'stack': err.stack || '',
+          'data': loggingData
+        });
       });
 
     return;
   }
 
-  console.log('request', 'get user ip with xid');
+  logger.debug('get user ip with xid', loggingData);
+
   getUserIpWithXid(xid, chaddr)
-    .then( res => {
-      console.log('request', `xid found: ${xid}`);
+    .then(([ edge, portIndex, resObj ]) => {
+      loggingData.edge = edge.ip;
+      loggingData.portIndex = portIndex;
+      loggingData.yiaddr = resObj.yiaddr;
+      loggingData.subnetMask = resObj.subnet_mask;
+      loggingData.router = resObj.router;
+
+      logger.debug('xid found', loggingData);
+
       removeXid(xid);
-      return Promise.resolve(res);
+
+      return Promise.resolve([ edge, portIndex, resObj ]);
     })
     .catch(err => {
-      if (err.type && err.type === 'key not found') {
-        console.log('request', `xid not found: ${err.data.key}`);
+      if (err.type === 'key not found') {
+        const localLoggingData = {};
+        Object.assign(localLoggingData, loggingData);
+        Object.assign(localLoggingData, err.data);
+        logger.debug('xid not found', localLoggingData);
 
-        // if (isZero(ciaddr)) {
-        //   return Promise.reject({
-        //   'type': 'xid not found',
-        //   'data': {
-        //     'xid': xid
-        //   },
-        //   'message': `DHCPREQUEST from ${chaddr} xid ${xid} not found and ciaddr is zero`
-        //   });
-        // }
+        logger.debug('get user ip with option 82', loggingData);
 
-        console.log('request', 'get user ip with option 82');
         return getUserIpWithOption82(giaddr, chaddr, option82)
           .then(([edge, portIndex, resObj]) => {
-            writeMacCache(edge.ip, portIndex, JSON.stringify(resObj));
+            loggingData.edge = edge.ip;
+            loggingData.portIndex = portIndex;
+            loggingData.yiaddr = resObj.yiaddr;
+            loggingData.subnetMask = resObj.subnet_mask;
+            loggingData.router = resObj.router;
+
+            logger.debug('user ip found', loggingData);
+
+            writeMacCache(edge.ip, portIndex, chaddr, JSON.stringify(resObj), loggingData);
+
             return Promise.resolve([ edge, portIndex, resObj ]);
           });
+
       }
 
-      else return Promise.reject(err);
+      return Promise.reject(err);
     })
-    .then(([edge, portIndex, resObj]) => {
+    .then(([ edge, portIndex, resObj ]) => {
       if (!isZero(ciaddr) && ciaddr !== resObj.yiaddr) {
         return Promise.reject(
           genErrObject('ciaddr', resObj.yiaddr, ciaddr)
@@ -479,30 +595,47 @@ router.post('/request', function (req, res, next) {
         );
       }
 
-      console.log('request', `${chaddr} is at ${edge.ip} port ${portIndex}`);
-      respondJSON(JSON.stringify(resObj));
+      respondJSON(res, {
+        'message': 'send response',
+        'data': loggingData
+      }, JSON.stringify(resObj));
 
-      console.log('request', `push check_port ${edge.ip}:${portIndex}:${chaddr}:${Date.now()}`);
+      logger.info('push check_port', loggingData);
       redis.rpush('check_port', `${edge.ip}:${portIndex}:${chaddr}:${Date.now()}`)
         .then(() => {
-          console.log('request', 'publish check_port notify');
+        logger.debug('publish check_port notify', loggingData);
           redis.publish('check_port:notify', '');
         });
 
       return Promise.resolve();
     })
     .catch(err => {
-      if (err.type === 'option not match' || err.type === 'user ip not found' || err.type === 'xid not found' || err.type === 'snmp not found') {
-        console.log('request', err.message);
-        respondForbidden();
+      const forbidReasons = [ 'option not match', 'user ip not found', 'xid not found', 'snmp not found' ];
+      if (forbidReasons.indexOf(err.type) >= 0) {
+        const localLoggingData = {};
+        Object.assign(localLoggingData, loggingData);
+        Object.assign(localLoggingData, err.data);
+
+        respondForbidden(res, {
+          'message': err.type,
+          'data': localLoggingData
+        }, `{"requested_ip_address":"${requestedIp}","server_identifier": "${giaddr}"}`);
+
         return Promise.resolve();
       }
 
       return Promise.reject(err);
     })
     .catch(err => {
-      respondServerError(err);
-      // return Promise.reject(err);
+      const localLoggingData = {};
+      Object.assign(localLoggingData, loggingData);
+      Object.assign(localLoggingData, err.data);
+
+      respondServerError(res, {
+        'message': err.type || err.message,
+        'stack': err.stack || '',
+        'data': loggingData
+      });
     });
 });
 
