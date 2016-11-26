@@ -35,3 +35,4 @@ typings.json
 config/*
 !config/default.json
 process.yml
+public/stylesheets/style.css
