@@ -22,7 +22,8 @@ const sql = new Sequelize(
     'pool': {
       'max': 10,
       'min': 0
-    }
+    },
+    'logging': false
   }
 );
 
