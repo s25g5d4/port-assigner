@@ -2,7 +2,7 @@ var express = require('express');
 var router = express.Router();
 
 var api = require('./api');
-var view = require('./view');
+var viewSwitch = require('./switch');
 
 const SwitchList = require('../models/switch-list');
 
@@ -22,7 +22,7 @@ router.get('/', function(req, res, next) {
 
 });
 
-router.use('/view', view);
+router.use('/switch', viewSwitch);
 
 router.use('/api', api);
 

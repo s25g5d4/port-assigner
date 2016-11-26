@@ -1,0 +1,122 @@
+<%- include('../layout-header', { 'title': title }) %>
+
+<section id="section-title" class="text-center col-sm-12">
+  <h1><%= title %></h1>
+</section>
+
+<section id="section-switch-info" class="col-sm-8 col-sm-offset-2">
+  <table class="table text-left">
+    <tbody>
+
+      <tr>
+        <th class="text-right col-sm-5">IP Address</th>
+        <td class="col-sm-7"><%= switchInfo.ip %></td>
+      </tr>
+
+      <tr>
+        <th class="text-right col-sm-5">MAC Address</th>
+        <td class="col-sm-7"><%= switchInfo.mac.toUpperCase().match(/../g).join(':') %></td>
+      </tr>
+
+      <tr>
+        <th class="text-right col-sm-5">Model Name</th>
+        <td class="col-sm-7"><%= switchInfo.name %></td>
+      </tr>
+
+      <tr>
+        <th class="text-right col-sm-5">Description</th>
+        <td class="col-sm-7"><%= switchInfo.full %></td>
+      </tr>
+
+    </tbody>
+  </table>
+</section>
+
+<section id="section-switch-image" class="col-sm-12">
+  <img class="switch-img" src="/images/<%= switchImg %>">
+</section>
+
+<% for (let ind of [0, 1]) { -%>
+<section id="section-switch-port-<%= ind + 1 %>" class="col-sm-12">
+  <table class="port-table table table-bordered table-condensed table-fixed text-center">
+    <tbody>
+
+      <tr>
+        <th class="text-center bg-primary">Port</th>
+        <% for (let portIndex of portLayout[ind]) { -%>
+        <td class="bg-primary switch-port" data-port="<%= portIndex %>"><%= portIndex %></td>
+        <% } -%>
+      </tr>
+
+      <tr>
+        <th class="text-center bg-primary">Dorm</th>
+        <% for (let portIndex of portLayout[ind]) { -%>
+        <td class="bg-info switch-port switch-port-<%= portIndex %>" data-port="<%= portIndex %>"><%= switchPort[portIndex - 1] ? switchPort[portIndex - 1].dorm : '' %></td>
+        <% } -%>
+      </tr>
+
+      <tr>
+        <th class="text-center bg-primary">Room</th>
+        <% for (let portIndex of portLayout[ind]) { %>
+        <td class="bg-info switch-port switch-port-<%= portIndex %>" data-port="<%= portIndex %>"><%= switchPort[portIndex - 1] ? switchPort[portIndex - 1].room : '' %></td>
+        <% } %>
+      </tr>
+
+      <tr>
+        <th class="text-center bg-primary">Plug</th>
+        <% for (let portIndex of portLayout[ind]) { %>
+        <td class="bg-info switch-port switch-port-<%= portIndex %>" data-port="<%= portIndex %>"><%= switchPort[portIndex - 1] ? switchPort[portIndex - 1].plug : '' %></td>
+        <% } %>
+      </tr>
+
+    </tbody>
+  </table>
+</section>
+<% } -%>
+
+<%
+  const ipDvoSplit = [ ipDvo.slice(0, Math.ceil(ipDvo.length / 2) ), ipDvo.slice( Math.ceil(ipDvo.length / 2) ) ];
+  for (let ind of [0, 1]) {
+-%>
+<section id="section-ip-dvo-<%= ind + 1 %>" class="text-center col-sm-6">
+  <table class="port-table table table-bordered table-condensed table-fixed">
+    <tbody>
+
+      <tr>
+        <th class="text-center bg-primary col-sm-2">Port</th>
+        <th class="text-center bg-primary col-sm-2">DVO</th>
+        <th class="text-center bg-primary col-sm-8">IP</th>
+      </tr>
+
+      <% for (let ipInfo of ipDvoSplit[ind]) { %>
+      <tr>
+        <td class="bg-info dvo-ip switch-port-<%= ipInfo.port %>" data-port="<%= ipInfo.port %>"><%= ipInfo.port %></td>
+        <td class="bg-info dvo-ip switch-port-<%= ipInfo.port %>" data-port="<%= ipInfo.port %>"><%= ipInfo.dvo %></td>
+        <td class="bg-info dvo-ip switch-port-<%= ipInfo.port %>" data-port="<%= ipInfo.port %>"><%= ipInfo.ip %></td>
+      </tr>
+      <% } %>
+
+    </tbody>
+  </table>
+</section>
+<% } -%>
+
+<script>
+$('.port-table').on('click', 'td', event => {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const target = $(event.target);
+  const port = target.data('port');
+
+  if (target.hasClass('port-highlight')) {
+    $('.port-highlight').removeClass('port-highlight');
+    return;
+  }
+
+  $('.port-highlight').removeClass('port-highlight');
+  $(`.switch-port-${port}`).addClass('port-highlight');
+});
+</script>
+
+<%- include('../layout-footer') %>

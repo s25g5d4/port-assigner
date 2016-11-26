@@ -1,33 +1,29 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <title><%= title %></title>
-    <!--    <link rel='stylesheet' href='/stylesheets/style.css' /> -->
-    <link href="/bootstrap/css/bootstrap.min.css" rel="stylesheet">
-  </head>
-  <body>
-    <div class="container">
-      <h1 class="text-center"><%= title %></h1>
-      <table class="table table-hover table-striped table-condensed text-center">
-        <thead class="bg-primary">
-          <tr>
-            <th class="text-center">IP</th>
-            <th class="text-center">Device Type</th>
-            <th class="text-center">Describe</th>
-            <th class="text-center">View</th>
-          </tr>
-  	    </thead>
-        <tbody>
-          <% for (let info of list) { %>
-          <tr>
-            <td><%= info.ip %></td>
-            <td><%= info.name %></td>
-            <td><%= info.full %></td>
-            <td><a href="<%= `/view/${info.ip}` %>">view</a></td>
-          </tr>
-          <% } %>
-        </tbody>
-      </table>
-    </div>
-  </body>
-</html>
+<%- include('layout-header') %>
+
+<section id="section-title" class="text-center col-sm-12">
+  <h1><%= title %></h1>
+</section>
+
+<section id="section-switch-list" class="text-center col-sm-12">
+  <table class="table table-hover table-striped table-condensed">
+    <thead class="bg-primary">
+      <tr>
+        <th class="text-center">IP Address</th>
+        <th class="text-center">Device Type</th>
+        <th class="text-center">Describe</th>
+        <th class="text-center">View</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% for (let info of list) { %>
+      <tr>
+        <td><%= info.ip %></td>
+        <td><%= info.name %></td>
+        <td><%= info.full %></td>
+        <td><a href="<%= `/switch/${info.ip}` %>">view</a></td>
+      </tr>
+      <% } %>
+    </tbody>
+  </table>
+</section>
+<%- include('layout-footer') %>
