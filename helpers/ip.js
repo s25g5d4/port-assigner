@@ -3,7 +3,7 @@ exports.decimalToDottedIp = e => {
     const multipleIp = Array.from(e);
     const result = [];
     while (multipleIp.length >= 4) {
-      result.push(multipleIp.splice(0, 4)).map(e => e.toString(16)).join('.');
+      result.push(multipleIp.splice(0, 4).map(e => e.toString(10)).join('.'));
     }
     return result;
   }
