@@ -1,7 +1,9 @@
 <%- include('../layout-header', { 'title': title }) %>
 
 <section id="section-title" class="text-center col-sm-12">
+  <header>
   <h1><%= title %></h1>
+  </header>
 </section>
 
 <section id="section-switch-info" class="col-sm-8 col-sm-offset-2">
@@ -32,91 +34,180 @@
   </table>
 </section>
 
-<section id="section-switch-image" class="col-sm-12">
-  <img class="switch-img" src="/images/<%= switchImg %>">
+<section id="section-switch-port">
+  <header class="text-center col-sm-12">
+    <h2>Port Table</h2>
+  </header>
+
+  <div id="switch-image" class="col-sm-12">
+    <img class="switch-img" src="/images/<%= switchImg %>">
+  </div>
+
+  <% for (let ind of [0, 1]) { -%>
+  <div id="switch-port-<%= ind + 1 %>" class="col-sm-12">
+    <table class="port-table table table-bordered table-condensed table-fixed text-center">
+      <tbody>
+
+        <tr>
+          <th class="text-center bg-primary">Port</th>
+          <% for (let portIndex of portLayout[ind]) { -%>
+          <td class="bg-primary switch-port" data-port="<%= portIndex %>"><%= portIndex %></td>
+          <% } -%>
+        </tr>
+
+        <tr>
+          <th class="text-center bg-primary">Dorm</th>
+          <% for (let portIndex of portLayout[ind]) { -%>
+          <td class="bg-info switch-port switch-port-<%= portIndex %>" data-port="<%= portIndex %>"><%= switchPort[portIndex - 1] ? switchPort[portIndex - 1].dorm : '' %></td>
+          <% } -%>
+        </tr>
+
+        <tr>
+          <th class="text-center bg-primary">Room</th>
+          <% for (let portIndex of portLayout[ind]) { %>
+          <td class="bg-info switch-port switch-port-<%= portIndex %>" data-port="<%= portIndex %>"><%= switchPort[portIndex - 1] ? switchPort[portIndex - 1].room : '' %></td>
+          <% } %>
+        </tr>
+
+        <tr>
+          <th class="text-center bg-primary">Plug</th>
+          <% for (let portIndex of portLayout[ind]) { %>
+          <td class="bg-info switch-port switch-port-<%= portIndex %>" data-port="<%= portIndex %>"><%= switchPort[portIndex - 1] ? switchPort[portIndex - 1].plug : '' %></td>
+          <% } %>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+  <% } -%>
 </section>
 
-<% for (let ind of [0, 1]) { -%>
-<section id="section-switch-port-<%= ind + 1 %>" class="col-sm-12">
-  <table class="port-table table table-bordered table-condensed table-fixed text-center">
-    <tbody>
+<section id="section-ip-dvo">
+  <header class="text-center col-sm-12">
+    <h2>IP-Dvo Table</h2>
+  </header>
+  <%
+    const ipDvoSplit = [ ipDvo.slice(0, Math.ceil(ipDvo.length / 2) ), ipDvo.slice( Math.ceil(ipDvo.length / 2) ) ];
+    for (let ind of [0, 1]) {
+  -%>
+  <div id="ip-dvo-<%= ind + 1 %>" class="text-center col-sm-6">
+    <table class="ip-dvo-table table table-bordered table-condensed table-fixed">
+      <tbody>
 
-      <tr>
-        <th class="text-center bg-primary">Port</th>
-        <% for (let portIndex of portLayout[ind]) { -%>
-        <td class="bg-primary switch-port" data-port="<%= portIndex %>"><%= portIndex %></td>
-        <% } -%>
-      </tr>
+        <tr>
+          <th class="text-center bg-primary col-sm-2">Port</th>
+          <th class="text-center bg-primary col-sm-2">DVO</th>
+          <th class="text-center bg-primary col-sm-8">IP</th>
+        </tr>
 
-      <tr>
-        <th class="text-center bg-primary">Dorm</th>
-        <% for (let portIndex of portLayout[ind]) { -%>
-        <td class="bg-info switch-port switch-port-<%= portIndex %>" data-port="<%= portIndex %>"><%= switchPort[portIndex - 1] ? switchPort[portIndex - 1].dorm : '' %></td>
-        <% } -%>
-      </tr>
-
-      <tr>
-        <th class="text-center bg-primary">Room</th>
-        <% for (let portIndex of portLayout[ind]) { %>
-        <td class="bg-info switch-port switch-port-<%= portIndex %>" data-port="<%= portIndex %>"><%= switchPort[portIndex - 1] ? switchPort[portIndex - 1].room : '' %></td>
+        <% for (let ipInfo of ipDvoSplit[ind]) { %>
+        <tr class="bg-info switch-port-<%= ipInfo.port %>" data-port="<%= ipInfo.port %>">
+          <td class="dvo-ip"><%= ipInfo.port %></td>
+          <td class="dvo-ip"><%= ipInfo.dvo %></td>
+          <td class="dvo-ip"><%= ipInfo.ip %></td>
+        </tr>
         <% } %>
-      </tr>
 
-      <tr>
-        <th class="text-center bg-primary">Plug</th>
-        <% for (let portIndex of portLayout[ind]) { %>
-        <td class="bg-info switch-port switch-port-<%= portIndex %>" data-port="<%= portIndex %>"><%= switchPort[portIndex - 1] ? switchPort[portIndex - 1].plug : '' %></td>
-        <% } %>
-      </tr>
-
-    </tbody>
-  </table>
+      </tbody>
+    </table>
+  </div>
+  <% } -%>
 </section>
-<% } -%>
 
-<%
-  const ipDvoSplit = [ ipDvo.slice(0, Math.ceil(ipDvo.length / 2) ), ipDvo.slice( Math.ceil(ipDvo.length / 2) ) ];
-  for (let ind of [0, 1]) {
--%>
-<section id="section-ip-dvo-<%= ind + 1 %>" class="text-center col-sm-6">
-  <table class="port-table table table-bordered table-condensed table-fixed">
-    <tbody>
-
-      <tr>
-        <th class="text-center bg-primary col-sm-2">Port</th>
-        <th class="text-center bg-primary col-sm-2">DVO</th>
-        <th class="text-center bg-primary col-sm-8">IP</th>
-      </tr>
-
-      <% for (let ipInfo of ipDvoSplit[ind]) { %>
-      <tr>
-        <td class="bg-info dvo-ip switch-port-<%= ipInfo.port %>" data-port="<%= ipInfo.port %>"><%= ipInfo.port %></td>
-        <td class="bg-info dvo-ip switch-port-<%= ipInfo.port %>" data-port="<%= ipInfo.port %>"><%= ipInfo.dvo %></td>
-        <td class="bg-info dvo-ip switch-port-<%= ipInfo.port %>" data-port="<%= ipInfo.port %>"><%= ipInfo.ip %></td>
-      </tr>
-      <% } %>
-
-    </tbody>
-  </table>
+<section id="section-dhcp-log" class="text-center col-sm-12">
+  <header class="text-center col-sm-12">
+    <h2>DHCP Log</h2>
+  </header>
+  <div class="dhcp-log-stop-wrapper col-sm-offset-5 col-sm-2">
+    <button id="dhcp-log-stop" class="bg-info">Deactivate</button>
+  </div>
+  <div id="dhcp-log" class="text-center col-sm-12"></div>
 </section>
-<% } -%>
 
+<script src="/javascripts/moment.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 <script>
-$('.port-table').on('click', 'td', event => {
-  event.preventDefault();
-  event.stopPropagation();
+!function (window, document, io, moment, $) {
+    const establish = function establish(socket) {
+    socket.emit('select switch', '<%= switchInfo.ip %>');
+    socket.on('dhcp request', dhcpMsg => {
+      const p = document.createElement('p');
 
-  const target = $(event.target);
-  const port = target.data('port');
+      const t   = `<time class="dhcp-timestamp" datetime="${dhcpMsg.timestamp}">${moment(dhcpMsg.timestamp).format('YYYY-MM-DD HH:mm:ss')}</time>`;
+      const req = `<span class="dhcp-request-type text-primary">${dhcpMsg.requestType}</span>`;
+      const hw  = `<span class="dhcp-hw text-info">${dhcpMsg.chaddr.toUpperCase().match(/../g).join(':')}</span>`;
+      p.innerHTML = `${t} ${req} from ${hw}, `;
 
-  if (target.hasClass('port-highlight')) {
+      if (dhcpMsg.fakeIp) {
+        p.innerHTML += `sending fake ip`;
+      }
+      else {
+        if (dhcpMsg.requestType === 'DHCPREQUEST' && dhcpMsg.what) {
+          const option = {
+            'requested_ip_address': 'requested ip',
+            'subnet_mask': 'subnet mask',
+            'router': 'gateway'
+          };
+          const w = `<span class="dhcp-ip text-warning">${option[dhcpMsg.what]}</span>`;
+          const e = `<span class="dhcp-ip text-success">${dhcpMsg.expected}</span>`;
+          const r = `<span class="dhcp-ip text-danger">${dhcpMsg.received.replace(/[",]/g, e => ({ '"': '', ',': ', ' })[e])}</span>`;
+          p.innerHTML += `${w} not match: expect: ${e}, receive: ${r}`;
+        }
+        else {
+          const ip  = `<span class="dhcp-ip text-success">${dhcpMsg.yiaddr}</span>`;
+          const sub = `<span class="dhcp-subnet text-success">${dhcpMsg.subnetMask.split('.').map(e => (+e).toString(2).replace('0', '')).join('').length}</span>`;
+          const r   = `<span class="dhcp-route text-success">${dhcpMsg.router}</span>`;
+          p.innerHTML += `sending ${ip}/${sub} route default via ${r}`;
+        }
+      }
+
+      $(p).data('port', dhcpMsg.portIndex || '0').addClass(`dhcp-logs text-muted ${dhcpMsg.portIndex ? `switch-port-${dhcpMsg.portIndex}` : ''}`).appendTo('#dhcp-log');
+    });
+  };
+
+  const highlight = function highlight(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const target = $(event.currentTarget);
+    const port = target.data('port');
+
+    if (!port || target.hasClass('port-highlight')) {
+      $('.port-highlight').removeClass('port-highlight');
+      return;
+    }
+
     $('.port-highlight').removeClass('port-highlight');
-    return;
-  }
+    $(`.switch-port-${port}`).addClass('port-highlight');
+  };
 
-  $('.port-highlight').removeClass('port-highlight');
-  $(`.switch-port-${port}`).addClass('port-highlight');
-});
+  let socket = io('/dhcp');
+  establish(socket);
+
+  $('#dhcp-log-stop').on('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const target = $(event.currentTarget);
+
+    if (target.text() === 'Deactivate') {
+      socket.disconnect('user disconnect');
+      target.removeClass('bg-info').addClass('bg-success').text('Activate');
+    }
+    else {
+      socket = io('/dhcp');
+      establish(socket);
+      target.removeClass('bg-success').addClass('bg-info').text('Deactivate');
+    }
+  });
+
+  $('.port-table').on('click', 'td', highlight);
+
+  $('.ip-dvo-table').on('click', 'tr', highlight);
+
+  $('#dhcp-log').on('click', 'p', highlight);
+
+}(window, document, io, moment, jQuery);
 </script>
 
 <%- include('../layout-footer') %>

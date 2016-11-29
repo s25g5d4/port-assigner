@@ -4,6 +4,8 @@ var favicon = require('serve-favicon');
 var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
+var winston = require('winston');
+var moment = require('moment');
 
 var routes = require('./routes');
 
@@ -54,6 +56,16 @@ app.use(function(err, req, res, next) {
     message: err.message,
     error: {}
   });
+});
+
+// setup winston logger
+winston.remove(winston.transports.Console);
+winston.add(winston.transports.Console, {
+  'level': app.get('env') === 'development' ? 'debug' : 'info',
+  'timestamp': () => {
+    return moment().format('YYYY-MM-DD HH:mm:ss Z');
+  },
+  'colorize': true
 });
 
 module.exports = app;
