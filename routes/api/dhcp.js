@@ -150,7 +150,7 @@ const getUserIpWithXid = function getUserIpWithXid(xid, chaddr) {
 
 const respondNotFound = function respondNotFound(res, log) {
   // console.log('discover', `"${chaddr}" not found; may be missing giaddr or relay agent information`);
-  logger.info(log.message, log.data);
+  logger.error(log.message, log.data);
 
   res
     .set('Content-Type', 'Application/json')
@@ -418,7 +418,7 @@ router.post('/request', function (req, res, next) {
 
   loggingData.giaddr = giaddr;
 
-  if (!requestedIp || isZero(requestedIp)) {
+  if ((!requestedIp || isZero(requestedIp)) && isZero(ciaddr)) {
     respondNotFound(res, {
       'message': 'requested_ip_address not found',
       'data': loggingData
@@ -591,7 +591,7 @@ router.post('/request', function (req, res, next) {
 
       if (req.body.options['3'] && JSON.stringify( decimalToDottedIp(req.body.options['3'].slice(1)) ) !== JSON.stringify(resObj.router)) {
         return Promise.reject(
-          genErrObject('router', resObj.router, (req.body.options['3'] ? decimalToDottedIp(req.body.options['3'].slice(1)) : ''))
+          genErrObject('router', resObj.router, (req.body.options['3'] ? JSON.stringify( decimalToDottedIp(req.body.options['3'].slice(1)) ) : ''))
         );
       }
 
@@ -601,13 +601,24 @@ router.post('/request', function (req, res, next) {
       }, JSON.stringify(resObj));
 
       logger.info('push check_port', loggingData);
-      redis.rpush('check_port', `${edge.ip}:${portIndex}:${chaddr}:${Date.now()}`)
-        .then(() => {
-        logger.debug('publish check_port notify', loggingData);
-          redis.publish('check_port:notify', '');
-        });
+      return SwitchList.findById(edge.ip, { 'attributes': ['uplink'], 'raw': true })
+        .then(sw => {
+          if (sw.uplink !== portIndex) {
+            return redis.rpush('check_port', `${edge.ip}:${portIndex}:${chaddr}:${Date.now()}`);
+          }
 
-      return Promise.resolve();
+          return Promise.reject({
+            'type': 'port is uplink',
+            'data': { 'uplink': sw.uplink },
+            'message': `${edge.ip} port ${uplink} is uplink`
+          });
+        })
+        .then(() => {
+          logger.debug('publish check_port notify', loggingData);
+          redis.publish('check_port:notify', '');
+
+          return Promise.resolve();
+        });
     })
     .catch(err => {
       const forbidReasons = [ 'option not match', 'user ip not found', 'xid not found', 'snmp not found' ];
