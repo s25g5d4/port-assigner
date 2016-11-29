@@ -69,7 +69,7 @@ module.exports = function createDhcpIo(io) {
 
     winston.debug('redis channel dhcp get message', { 'messageRaw': messageRaw });
 
-    if (message.level === 'info') {
+    if (message.level === 'info' && message.message.search('send') >= 0) {
       const dhcpIoMsg = generateDhcpIoMsg(message);
 
       winston.debug('emit dhcp message', dhcpIoMsg);
